@@ -7,6 +7,7 @@ import { createExpenseAction, editExpenseAction } from "@/app/actions";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input, Select, Textarea } from "@/components/ui/input";
+import { useToast } from "@/components/ui/toast";
 import { calculateShare, formatToman, toInputDate } from "@/lib/utils";
 
 type PersonOption = Pick<Person, "id" | "name" | "username" | "type">;
@@ -43,6 +44,7 @@ export function ExpenseForm({
   const [guestUsername, setGuestUsername] = useState("");
   const [guestModalOpen, setGuestModalOpen] = useState(false);
   const [localGuests, setLocalGuests] = useState<PersonOption[]>([]);
+  const { showToast } = useToast();
   const allPeople = [...people, ...localGuests];
   const filtered = allPeople.filter(
     (person) =>
@@ -59,16 +61,22 @@ export function ExpenseForm({
   }
 
   function addLocalGuest() {
-    if (!guestName.trim() || !guestUsername.trim()) return;
+    if (!guestName.trim() || !guestUsername.trim()) {
+      showToast({ type: "error", message: "نام نمایشی و username مهمان را وارد کن." });
+      return;
+    }
+    const name = guestName.trim();
+    const username = guestUsername.trim();
     const id = `guest:${crypto.randomUUID()}`;
     setLocalGuests((items) => [
       ...items,
-      { id, name: guestName.trim(), username: guestUsername.trim(), type: "GUEST" } as PersonOption,
+      { id, name, username, type: "GUEST" } as PersonOption,
     ]);
     setSelected((items) => [...items, id]);
     setGuestName("");
     setGuestUsername("");
     setGuestModalOpen(false);
+    showToast({ type: "success", message: `مهمان ${name} به این خرج اضافه شد.` });
   }
 
   return (

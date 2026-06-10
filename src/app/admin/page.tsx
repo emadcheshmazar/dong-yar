@@ -8,6 +8,7 @@ import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { PasswordInput } from "@/components/ui/password-input";
 import { destroyAdminSession, requireAdmin } from "@/lib/auth";
+import { setFlashToast } from "@/lib/flash-toast";
 import { getAdminGroups } from "@/lib/queries";
 
 export const dynamic = "force-dynamic";
@@ -19,6 +20,7 @@ export default async function AdminPage() {
   async function logout() {
     "use server";
     await destroyAdminSession();
+    await setFlashToast("success", "از پنل ادمین خارج شدی.");
     redirect("/admin/login");
   }
 

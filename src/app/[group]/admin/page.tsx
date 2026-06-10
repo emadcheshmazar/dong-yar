@@ -8,6 +8,7 @@ import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { PasswordInput } from "@/components/ui/password-input";
 import { destroyGroupAdminSession, requireGroupAdmin } from "@/lib/auth";
+import { setFlashToast } from "@/lib/flash-toast";
 import { getAdminGroup } from "@/lib/queries";
 import { formatDate, formatToman } from "@/lib/utils";
 
@@ -24,6 +25,7 @@ export default async function GroupAdminPage({ params }: { params: Promise<{ gro
   async function logout() {
     "use server";
     await destroyGroupAdminSession();
+    await setFlashToast("success", "از پنل ادمین گروه خارج شدی.");
     redirect(`/${groupSlug}/admin/login`);
   }
 

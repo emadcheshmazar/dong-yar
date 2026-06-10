@@ -1,13 +1,20 @@
 "use client";
 
-import { useActionState } from "react";
+import { useActionState, useEffect } from "react";
 import { Search } from "lucide-react";
 import { selectGroupAction } from "@/app/actions";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { useToast } from "@/components/ui/toast";
 
 export function GroupLookupForm() {
   const [state, action, pending] = useActionState(selectGroupAction, null);
+  const { showToast } = useToast();
+
+  useEffect(() => {
+    if (state?.toast) showToast(state.toast);
+  }, [showToast, state]);
+
   return (
     <form action={action} className="space-y-4">
       <label className="block space-y-2">

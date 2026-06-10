@@ -2,6 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { LayoutDashboard, LogOut, PlusCircle, ReceiptText, UsersRound } from "lucide-react";
 import { destroySession, requirePerson } from "@/lib/auth";
+import { setFlashToast } from "@/lib/flash-toast";
 
 const navItems = [
   { href: "/dashboard", label: "داشبورد من", icon: LayoutDashboard },
@@ -15,6 +16,7 @@ export async function AppShell({ children, groupSlug }: { children: React.ReactN
   async function logout() {
     "use server";
     await destroySession();
+    await setFlashToast("success", "با موفقیت خارج شدی.");
     redirect(`/${groupSlug}/login`);
   }
   const prefix = `/${groupSlug}`;

@@ -1,14 +1,21 @@
 "use client";
 
-import { useActionState } from "react";
+import { useActionState, useEffect } from "react";
 import { KeyRound, UserRound } from "lucide-react";
 import { loginAction } from "@/app/actions";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { PasswordInput } from "@/components/ui/password-input";
+import { useToast } from "@/components/ui/toast";
 
 export function LoginForm({ groupSlug, usernames }: { groupSlug: string; usernames: string[] }) {
   const [state, action, pending] = useActionState(loginAction, null);
+  const { showToast } = useToast();
+
+  useEffect(() => {
+    if (state?.toast) showToast(state.toast);
+  }, [showToast, state]);
+
   return (
     <form action={action} className="space-y-4">
       <input type="hidden" name="groupSlug" value={groupSlug} />

@@ -9,8 +9,16 @@ import { Card } from "@/components/ui/card";
 import { Input, Select, Textarea } from "@/components/ui/input";
 import { calculateShare, formatToman, toInputDate } from "@/lib/utils";
 
-type PersonOption = Pick<Person, "id" | "name" | "type">;
+type PersonOption = Pick<Person, "id" | "name" | "username" | "type">;
 type ExpenseForEdit = Expense & { participants: ExpenseParticipant[] };
+
+function formatPlainNumber(value: number) {
+  return value ? new Intl.NumberFormat("en-US").format(value) : "";
+}
+
+function toNumber(value: string) {
+  return Number(value.replace(/[^\d]/g, ""));
+}
 
 export function ExpenseForm({
   groupSlug,
@@ -28,13 +36,20 @@ export function ExpenseForm({
   managerScope?: "central" | "group";
 }) {
   const [amount, setAmount] = useState(expense?.amount ?? 0);
+  const [amountText, setAmountText] = useState(formatPlainNumber(expense?.amount ?? 0));
   const [selected, setSelected] = useState<string[]>(expense?.participants.map((p) => p.personId) ?? [currentPersonId]);
   const [query, setQuery] = useState("");
   const [guestName, setGuestName] = useState("");
+  const [guestUsername, setGuestUsername] = useState("");
   const [guestModalOpen, setGuestModalOpen] = useState(false);
   const [localGuests, setLocalGuests] = useState<PersonOption[]>([]);
   const allPeople = [...people, ...localGuests];
-  const filtered = allPeople.filter((person) => person.name.includes(query) || person.id.includes(query));
+  const filtered = allPeople.filter(
+    (person) =>
+      person.name.includes(query) ||
+      (person.username ?? "").includes(query) ||
+      person.id.includes(query),
+  );
   const share = useMemo(() => calculateShare(amount, selected.length), [amount, selected.length]);
   const receivable = Math.max(selected.length - 1, 0) * share;
   const action = expense ? editExpenseAction : createExpenseAction;
@@ -44,11 +59,15 @@ export function ExpenseForm({
   }
 
   function addLocalGuest() {
-    if (!guestName.trim()) return;
+    if (!guestName.trim() || !guestUsername.trim()) return;
     const id = `guest:${crypto.randomUUID()}`;
-    setLocalGuests((items) => [...items, { id, name: guestName.trim(), type: "GUEST" } as PersonOption]);
+    setLocalGuests((items) => [
+      ...items,
+      { id, name: guestName.trim(), username: guestUsername.trim(), type: "GUEST" } as PersonOption,
+    ]);
     setSelected((items) => [...items, id]);
     setGuestName("");
+    setGuestUsername("");
     setGuestModalOpen(false);
   }
 
@@ -58,8 +77,9 @@ export function ExpenseForm({
       {adminMode ? <input type="hidden" name="adminMode" value="on" /> : null}
       {adminMode ? <input type="hidden" name="managerScope" value={managerScope} /> : null}
       {expense ? <input type="hidden" name="id" value={expense.id} /> : null}
+      <input type="hidden" name="amount" value={amount || ""} />
       {localGuests.map((guest) => (
-        <input key={guest.id} type="hidden" name="localGuests" value={`${guest.id}|||${guest.name}`} />
+        <input key={guest.id} type="hidden" name="localGuests" value={`${guest.id}|||${guest.name}|||${guest.username ?? ""}`} />
       ))}
       <Card className="space-y-5">
         {expense ? (
@@ -75,12 +95,14 @@ export function ExpenseForm({
           <label className="space-y-2">
             <span className="text-sm font-bold">مبلغ کل</span>
             <Input
-              name="amount"
-              type="number"
-              min={1}
-              defaultValue={expense?.amount}
-              onChange={(event) => setAmount(Number(event.target.value))}
-              placeholder="850000"
+              inputMode="numeric"
+              value={amountText}
+              onChange={(event) => {
+                const nextAmount = toNumber(event.target.value);
+                setAmount(nextAmount);
+                setAmountText(formatPlainNumber(nextAmount));
+              }}
+              placeholder="850,000"
               required
             />
           </label>
@@ -136,7 +158,10 @@ export function ExpenseForm({
               <label key={person.id} className="flex cursor-pointer items-center justify-between rounded-xl border border-slate-100 p-3 hover:bg-emerald-50">
                 <span>
                   <span className="block text-sm font-bold">{person.name}</span>
-                  <span className="text-xs text-slate-500">{person.type === "GUEST" ? "مهمان" : "عضو ثابت"}</span>
+                  <span className="text-xs text-slate-500">
+                    {person.type === "GUEST" ? "مهمان" : "عضو ثابت"}
+                    {person.username ? `، ${person.username}` : ""}
+                  </span>
                 </span>
                 <input
                   type="checkbox"
@@ -181,8 +206,12 @@ export function ExpenseForm({
             <h2 className="text-xl font-black">افزودن مهمان</h2>
             <p className="mt-2 text-sm text-slate-600">مهمان پنل ندارد، فقط برای حساب‌وکتاب همین خرج اضافه می‌شود.</p>
             <label className="mt-4 block space-y-2">
-              <span className="text-sm font-bold">نام مهمان</span>
+              <span className="text-sm font-bold">اسم نمایشی مهمان</span>
               <Input value={guestName} onChange={(event) => setGuestName(event.target.value)} placeholder="نام مهمان" autoFocus />
+            </label>
+            <label className="mt-4 block space-y-2">
+              <span className="text-sm font-bold">Username مهمان</span>
+              <Input value={guestUsername} onChange={(event) => setGuestUsername(event.target.value)} dir="ltr" className="text-left" placeholder="guest-username" />
             </label>
             <div className="mt-5 flex gap-2">
               <Button type="button" onClick={addLocalGuest}>

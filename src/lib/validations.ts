@@ -38,7 +38,7 @@ export const personSchema = z.object({
   id: z.string().optional(),
   groupId: z.string().min(1, "گروه مشخص نیست.").optional(),
   name: z.string().trim().min(2, "نام کوتاه است."),
-  username: z.string().trim().optional(),
+  username: z.string().trim().min(1, "نام کاربری را وارد کن."),
   type: z.enum(["MEMBER", "GUEST"]),
   isGroupAdmin: z.coerce.boolean().optional(),
   password: z.string().optional(),

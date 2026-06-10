@@ -6,6 +6,7 @@ import { Badge } from "@/components/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { PasswordInput } from "@/components/ui/password-input";
 import { destroyGroupAdminSession, requireGroupAdmin } from "@/lib/auth";
 import { getAdminGroup } from "@/lib/queries";
 import { formatDate, formatToman } from "@/lib/utils";
@@ -68,7 +69,7 @@ export default async function GroupAdminPage({ params }: { params: Promise<{ gro
                 <input name="isGroupAdmin" type="checkbox" className="size-5 accent-emerald-600" />
                 ادمین گروه
               </label>
-              <Input name="password" type="password" placeholder="رمز ادمین گروه، اگر ادمین است" />
+              <PasswordInput name="password" placeholder="رمز اختصاصی اختیاری" />
               <Button className="md:col-span-3">
                 <UserPlus className="size-4" />
                 افزودن عضو
@@ -83,7 +84,7 @@ export default async function GroupAdminPage({ params }: { params: Promise<{ gro
                   <input type="hidden" name="type" value="MEMBER" />
                   <Input name="name" defaultValue={member.name} />
                   <Input name="username" defaultValue={member.username ?? ""} />
-                  <Input name="password" type="password" placeholder="رمز جدید اختیاری" />
+                  <PasswordInput name="password" placeholder="رمز جدید اختیاری" />
                   <label className="flex items-center gap-2 text-sm font-bold">
                     <input name="isActive" type="checkbox" defaultChecked={member.isActive} className="size-5 accent-emerald-600" />
                     فعال
@@ -120,6 +121,7 @@ export default async function GroupAdminPage({ params }: { params: Promise<{ gro
               <input type="hidden" name="type" value="GUEST" />
               <input type="hidden" name="isActive" value="on" />
               <Input name="name" placeholder="نام مهمان" required />
+              <Input name="username" dir="ltr" className="text-left" placeholder="guest-username" required />
               <Button variant="secondary">افزودن مهمان</Button>
             </form>
             <div className="space-y-3">
@@ -131,6 +133,7 @@ export default async function GroupAdminPage({ params }: { params: Promise<{ gro
                   <input type="hidden" name="type" value="GUEST" />
                   <input type="hidden" name="isActive" value="on" />
                   <Input name="name" defaultValue={guest.name} />
+                  <Input name="username" dir="ltr" className="text-left" defaultValue={guest.username ?? ""} />
                   <Button variant="outline">ذخیره</Button>
                   <Button form={`group-delete-person-${guest.id}`} variant="danger" type="submit">حذف</Button>
                 </form>

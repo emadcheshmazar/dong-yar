@@ -48,6 +48,7 @@ export default async function PeoplePage({ params }: { params: Promise<{ group: 
             {people.guests.map((guest) => (
               <div key={guest.id} className="rounded-2xl border border-slate-100 p-4">
                 <p className="font-black">{guest.name}</p>
+                <p className="text-sm text-slate-500">{guest.username}</p>
               </div>
             ))}
             {!people.guests.length ? <p className="rounded-2xl bg-slate-50 p-4 text-sm font-bold text-slate-600">هنوز مهمانی ثبت نشده.</p> : null}

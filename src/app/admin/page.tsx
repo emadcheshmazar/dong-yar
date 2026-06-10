@@ -6,6 +6,7 @@ import { Badge } from "@/components/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { PasswordInput } from "@/components/ui/password-input";
 import { destroyAdminSession, requireAdmin } from "@/lib/auth";
 import { getAdminGroups } from "@/lib/queries";
 
@@ -51,7 +52,7 @@ export default async function AdminPage() {
               <div className="space-y-3">
                 <Input name="adminName" placeholder="نام ادمین گروه" required />
                 <Input name="adminUsername" dir="ltr" className="text-left" placeholder="admin username" required />
-                <Input name="adminPassword" type="password" dir="ltr" className="text-left" placeholder="admin password" required />
+                <PasswordInput name="adminPassword" dir="ltr" className="text-left" placeholder="admin password" required />
               </div>
             </div>
             <label className="flex items-center gap-2 text-sm font-bold">

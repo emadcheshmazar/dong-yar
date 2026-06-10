@@ -5,6 +5,7 @@ import { KeyRound, UserRound } from "lucide-react";
 import { loginAction } from "@/app/actions";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { PasswordInput } from "@/components/ui/password-input";
 
 export function LoginForm({ groupSlug, usernames }: { groupSlug: string; usernames: string[] }) {
   const [state, action, pending] = useActionState(loginAction, null);
@@ -27,7 +28,7 @@ export function LoginForm({ groupSlug, usernames }: { groupSlug: string; usernam
         <span className="text-sm font-bold text-slate-700">رمز ورود</span>
         <div className="relative">
           <KeyRound className="absolute right-3 top-3 size-4 text-slate-400" />
-          <Input name="password" type="password" className="pr-10" placeholder="رمز ورود" required />
+          <PasswordInput name="password" className="pr-10" placeholder="رمز ورود" required />
         </div>
       </label>
       {state?.error ? <p className="rounded-xl bg-rose-50 p-3 text-sm font-semibold text-rose-700">{state.error}</p> : null}

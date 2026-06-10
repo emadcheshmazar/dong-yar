@@ -5,6 +5,7 @@ import { ShieldCheck, UserRound } from "lucide-react";
 import { groupAdminLoginAction } from "@/app/actions";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { PasswordInput } from "@/components/ui/password-input";
 
 export function GroupAdminLoginForm({ groupSlug }: { groupSlug: string }) {
   const [state, action, pending] = useActionState(groupAdminLoginAction, null);
@@ -22,7 +23,7 @@ export function GroupAdminLoginForm({ groupSlug }: { groupSlug: string }) {
         <span className="text-sm font-bold text-slate-700">رمز ادمین گروه</span>
         <div className="relative">
           <ShieldCheck className="absolute right-3 top-3 size-4 text-slate-400" />
-          <Input name="password" type="password" className="pr-10" placeholder="رمز" required />
+          <PasswordInput name="password" className="pr-10" placeholder="رمز" required />
         </div>
       </label>
       {state?.error ? <p className="rounded-xl bg-rose-50 p-3 text-sm font-semibold text-rose-700">{state.error}</p> : null}

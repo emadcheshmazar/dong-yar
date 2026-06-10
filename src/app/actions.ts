@@ -86,7 +86,9 @@ export async function loginAction(_: unknown, formData: FormData) {
     },
   });
   if (!person) return { error: "این نام کاربری برای این گروه پیدا نشد." };
-  const ok = await verifySharedPassword(parsed.data.password);
+  const ok = person.passwordHash
+    ? await verifyPersonPassword(parsed.data.password, person.passwordHash)
+    : await verifySharedPassword(parsed.data.password);
   if (!ok) return { error: "رمز ورود درست نیست." };
   await createSession(person.id);
   redirect(`/${group.slug}/dashboard`);
@@ -215,7 +217,7 @@ export async function upsertPersonAction(formData: FormData) {
   const data = {
     groupId: parsed.groupId,
     name: parsed.name,
-    username: parsed.type === "MEMBER" ? parsed.username : null,
+    username: parsed.username,
     passwordHash: parsed.type === "MEMBER" ? passwordHash : null,
     type: parsed.type,
     isGroupAdmin,
@@ -262,8 +264,8 @@ async function saveExpense(formData: FormData, mode: "create" | "edit") {
   const current = isAdminMode ? null : await requirePerson(group.slug);
 
   const localGuests = formStringArray(formData, "localGuests").map((value) => {
-    const [tempId, name] = value.split("|||");
-    return { tempId, name };
+    const [tempId, name, username] = value.split("|||");
+    return { tempId, name, username };
   });
   const raw = {
     id: formData.get("id")?.toString(),
@@ -289,9 +291,15 @@ async function saveExpense(formData: FormData, mode: "create" | "edit") {
 
   const localGuestIdMap = new Map<string, string>();
   for (const guest of localGuests) {
-    if (guest.tempId && guest.name && parsed.participantIds.includes(guest.tempId)) {
+    if (guest.tempId && guest.name && guest.username && parsed.participantIds.includes(guest.tempId)) {
       const created = await prisma.person.create({
-        data: { groupId: group.id, name: guest.name, type: PersonType.GUEST, isActive: true },
+        data: {
+          groupId: group.id,
+          name: guest.name,
+          username: guest.username,
+          type: PersonType.GUEST,
+          isActive: true,
+        },
       });
       localGuestIdMap.set(guest.tempId, created.id);
     }

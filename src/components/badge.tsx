@@ -1,0 +1,18 @@
+import { cn } from "@/lib/utils";
+
+export function Badge({
+  children,
+  tone = "slate",
+}: {
+  children: React.ReactNode;
+  tone?: "slate" | "green" | "amber" | "rose" | "sky";
+}) {
+  const tones = {
+    slate: "bg-slate-100 text-slate-700",
+    green: "bg-emerald-100 text-emerald-800",
+    amber: "bg-amber-100 text-amber-900",
+    rose: "bg-rose-100 text-rose-800",
+    sky: "bg-sky-100 text-sky-800",
+  };
+  return <span className={cn("rounded-full px-3 py-1 text-xs font-semibold", tones[tone])}>{children}</span>;
+}

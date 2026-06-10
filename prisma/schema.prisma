@@ -1,0 +1,75 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum PersonType {
+  MEMBER
+  GUEST
+}
+
+enum ExpenseStatus {
+  ACTIVE
+  CANCELLED
+}
+
+enum PaymentStatus {
+  PAID
+  UNPAID
+}
+
+model Person {
+  id        String     @id @default(cuid())
+  name      String
+  username  String?    @unique
+  type      PersonType @default(MEMBER)
+  isActive  Boolean    @default(true)
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+
+  paidExpenses      Expense[]             @relation("PaidBy")
+  createdExpenses   Expense[]             @relation("CreatedBy")
+  participations    ExpenseParticipant[]  @relation("ParticipantPerson")
+  markedPayments    ExpenseParticipant[]  @relation("MarkedBy")
+}
+
+model Expense {
+  id                String          @id @default(cuid())
+  title             String
+  amount            Int
+  paidByPersonId    String
+  createdByPersonId String
+  cardNumber        String?
+  paymentNote       String?
+  date              DateTime
+  description       String?
+  status            ExpenseStatus   @default(ACTIVE)
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+
+  paidBy       Person               @relation("PaidBy", fields: [paidByPersonId], references: [id])
+  createdBy    Person               @relation("CreatedBy", fields: [createdByPersonId], references: [id])
+  participants ExpenseParticipant[]
+}
+
+model ExpenseParticipant {
+  id               String        @id @default(cuid())
+  expenseId        String
+  personId         String
+  shareAmount      Int
+  paymentStatus    PaymentStatus @default(UNPAID)
+  paidAt           DateTime?
+  markedByPersonId String?
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
+
+  expense        Expense @relation(fields: [expenseId], references: [id], onDelete: Cascade)
+  person         Person  @relation("ParticipantPerson", fields: [personId], references: [id])
+  markedByPerson Person? @relation("MarkedBy", fields: [markedByPersonId], references: [id])
+
+  @@unique([expenseId, personId])
+}

@@ -1,0 +1,38 @@
+"use client";
+
+import { useActionState } from "react";
+import { KeyRound, UserRound } from "lucide-react";
+import { loginAction } from "@/app/actions";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+
+export function LoginForm({ usernames }: { usernames: string[] }) {
+  const [state, action, pending] = useActionState(loginAction, null);
+  return (
+    <form action={action} className="space-y-4">
+      <label className="block space-y-2">
+        <span className="text-sm font-bold text-slate-700">نام کاربری</span>
+        <div className="relative">
+          <UserRound className="absolute right-3 top-3 size-4 text-slate-400" />
+          <Input name="username" list="members" className="pr-10" placeholder="مثلا emad" required />
+          <datalist id="members">
+            {usernames.map((username) => (
+              <option key={username} value={username} />
+            ))}
+          </datalist>
+        </div>
+      </label>
+      <label className="block space-y-2">
+        <span className="text-sm font-bold text-slate-700">رمز ورود</span>
+        <div className="relative">
+          <KeyRound className="absolute right-3 top-3 size-4 text-slate-400" />
+          <Input name="password" type="password" className="pr-10" placeholder="رمز ورود" required />
+        </div>
+      </label>
+      {state?.error ? <p className="rounded-xl bg-rose-50 p-3 text-sm font-semibold text-rose-700">{state.error}</p> : null}
+      <Button className="w-full" size="lg" disabled={pending}>
+        {pending ? "داریم وارد می‌شیم..." : "ورود به داریا دنگ"}
+      </Button>
+    </form>
+  );
+}

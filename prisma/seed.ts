@@ -6,6 +6,7 @@ async function main() {
   await prisma.expenseParticipant.deleteMany();
   await prisma.expense.deleteMany();
   await prisma.person.deleteMany();
+  await prisma.group.deleteMany();
 
   console.log("Database cleared. No mock data was inserted.");
 }

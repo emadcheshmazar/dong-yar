@@ -5,15 +5,17 @@ import { getActivePeople } from "@/lib/queries";
 
 export const dynamic = "force-dynamic";
 
-export default async function NewExpensePage() {
-  const [person, people] = await Promise.all([requirePerson(), getActivePeople()]);
+export default async function NewExpensePage({ params }: { params: Promise<{ group: string }> }) {
+  const { group } = await params;
+  const person = await requirePerson(group);
+  const people = await getActivePeople(person.groupId);
   return (
-    <AppShell>
+    <AppShell groupSlug={person.group.slug}>
       <div className="mb-6">
         <h1 className="text-3xl font-black">ثبت خرج جدید</h1>
         <p className="mt-1 text-sm text-slate-600">عنوان، مبلغ و آدم‌ها را بده؛ سهم هر نفر زنده حساب می‌شود.</p>
       </div>
-      <ExpenseForm people={people} currentPersonId={person.id} />
+      <ExpenseForm groupSlug={person.group.slug} people={people} currentPersonId={person.id} />
     </AppShell>
   );
 }

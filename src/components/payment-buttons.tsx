@@ -7,11 +7,13 @@ import { Button } from "@/components/ui/button";
 import { formatToman } from "@/lib/utils";
 
 export function MarkPaidButton({
+  groupSlug,
   expenseId,
   payer,
   amount,
   note,
 }: {
+  groupSlug: string;
   expenseId: string;
   payer: string;
   amount: number;
@@ -35,6 +37,7 @@ export function MarkPaidButton({
             </div>
             <div className="mt-5 flex gap-2">
               <form action={markPaidAction}>
+                <input type="hidden" name="groupSlug" value={groupSlug} />
                 <input type="hidden" name="expenseId" value={expenseId} />
                 <Button>
                   <CreditCard className="size-4" />
@@ -52,9 +55,10 @@ export function MarkPaidButton({
   );
 }
 
-export function ToggleGuestPaymentButton({ participantId }: { participantId: string }) {
+export function ToggleGuestPaymentButton({ groupSlug, participantId }: { groupSlug: string; participantId: string }) {
   return (
     <form action={toggleGuestPaymentAction}>
+      <input type="hidden" name="groupSlug" value={groupSlug} />
       <input type="hidden" name="participantId" value={participantId} />
       <Button size="sm" variant="secondary">
         <RotateCcw className="size-4" />

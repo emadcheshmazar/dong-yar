@@ -1,17 +1,21 @@
-import { redirect } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { Coins, HandHeart } from "lucide-react";
 import { LoginForm } from "@/components/login-form";
 import { Card } from "@/components/ui/card";
 import { getCurrentPerson } from "@/lib/auth";
 import { prisma } from "@/lib/db";
+import { getGroupBySlug } from "@/lib/queries";
 
 export const dynamic = "force-dynamic";
 
-export default async function LoginPage() {
-  const current = await getCurrentPerson();
-  if (current) redirect("/dashboard");
+export default async function LoginPage({ params }: { params: Promise<{ group: string }> }) {
+  const { group: groupSlug } = await params;
+  const group = await getGroupBySlug(groupSlug);
+  if (!group) notFound();
+  const current = await getCurrentPerson(group.slug);
+  if (current) redirect(`/${group.slug}/dashboard`);
   const members = await prisma.person.findMany({
-    where: { type: "MEMBER", isActive: true },
+    where: { groupId: group.id, type: "MEMBER", isActive: true },
     orderBy: { createdAt: "asc" },
   });
   return (
@@ -22,14 +26,14 @@ export default async function LoginPage() {
             <Coins className="size-8" />
           </div>
           <h1 className="text-3xl font-black">داریا دنگ</h1>
-          <p className="mt-2 text-sm text-slate-600">خرج‌های کوچیک شرکت، بی‌دردسر و دوستانه.</p>
+          <p className="mt-2 text-sm text-slate-600">ورود گروه {group.name}</p>
         </div>
         <Card className="space-y-5">
           <div className="rounded-2xl bg-amber-50 p-4 text-sm text-amber-900">
             <HandHeart className="mb-2 size-5" />
             عضو ثابتت را انتخاب کن و با رمز ورود وارد شو. مهمان‌ها فقط داخل خرج‌ها هستند.
           </div>
-          <LoginForm usernames={members.map((member) => member.username).filter(Boolean) as string[]} />
+          <LoginForm groupSlug={group.slug} usernames={members.map((member) => member.username).filter(Boolean) as string[]} />
         </Card>
       </div>
     </main>

@@ -10,9 +10,11 @@ import { formatDate, formatToman } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
 
-export default async function DashboardPage() {
-  const person = await requirePerson();
-  const data = await getDashboard(person.id);
+export default async function DashboardPage({ params }: { params: Promise<{ group: string }> }) {
+  const { group } = await params;
+  const person = await requirePerson(group);
+  const data = await getDashboard(person.groupId, person.id);
+  const prefix = `/${person.group.slug}`;
   const cards = [
     { label: "خرج‌هایی که من کردم", value: data.spentByMe, icon: Coffee },
     { label: "طلب من", value: data.receivable, icon: HandCoins },
@@ -20,13 +22,13 @@ export default async function DashboardPage() {
     { label: "مانده نهایی", value: data.balance, icon: ReceiptText },
   ];
   return (
-    <AppShell>
+    <AppShell groupSlug={person.group.slug}>
       <div className="mb-6 flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
         <div>
           <h1 className="text-3xl font-black">داشبورد من</h1>
           <p className="mt-1 text-sm text-slate-600">سلام {person.name}، اینجا سهم‌ها و طلب‌ها را ساده می‌بینی.</p>
         </div>
-        <Link className="inline-flex h-11 items-center gap-2 rounded-xl bg-emerald-600 px-4 text-sm font-bold text-white" href="/expenses/new">
+        <Link className="inline-flex h-11 items-center gap-2 rounded-xl bg-emerald-600 px-4 text-sm font-bold text-white" href={`${prefix}/expenses/new`}>
           ثبت خرج جدید
           <ArrowLeft className="size-4" />
         </Link>
@@ -49,7 +51,7 @@ export default async function DashboardPage() {
                 <div key={expense.id} className="rounded-2xl border border-slate-100 p-4">
                   <div className="flex items-start justify-between gap-3">
                     <div>
-                      <Link className="font-black text-emerald-800" href={`/expenses/${expense.id}`}>{expense.title}</Link>
+                      <Link className="font-black text-emerald-800" href={`${prefix}/expenses/${expense.id}`}>{expense.title}</Link>
                       <p className="text-sm text-slate-500">به {expense.paidBy.name}، {formatDate(expense.date)}</p>
                       {expense.cardNumber || expense.paymentNote ? (
                         <p className="mt-2 text-sm text-slate-700">{expense.cardNumber || expense.paymentNote}</p>
@@ -59,6 +61,7 @@ export default async function DashboardPage() {
                   </div>
                   <div className="mt-3">
                     <MarkPaidButton
+                      groupSlug={person.group.slug}
                       expenseId={expense.id}
                       payer={expense.paidBy.name}
                       amount={participant?.shareAmount ?? 0}
@@ -82,7 +85,7 @@ export default async function DashboardPage() {
                 return (
                   <div key={expense.id} className="rounded-2xl border border-slate-100 p-4">
                     <div className="flex items-center justify-between gap-3">
-                      <Link href={`/expenses/${expense.id}`} className="font-black text-emerald-800">{expense.title}</Link>
+                      <Link href={`${prefix}/expenses/${expense.id}`} className="font-black text-emerald-800">{expense.title}</Link>
                       <Badge tone={unpaid.length ? "rose" : "green"}>{unpaid.length ? `${unpaid.length} نفر هنوز دنگ ندادن` : "همه حساب کردن"}</Badge>
                     </div>
                     <p className="mt-2 text-sm text-slate-600">
@@ -102,7 +105,7 @@ export default async function DashboardPage() {
         <h2 className="mb-4 text-xl font-black">آخرین خرج‌ها</h2>
         <div className="grid gap-3 md:grid-cols-3">
           {data.expenses.slice(0, 6).map((expense) => (
-            <Link key={expense.id} href={`/expenses/${expense.id}`} className="rounded-2xl border border-slate-100 p-4 hover:bg-emerald-50">
+            <Link key={expense.id} href={`${prefix}/expenses/${expense.id}`} className="rounded-2xl border border-slate-100 p-4 hover:bg-emerald-50">
               <p className="font-black">{expense.title}</p>
               <p className="mt-1 text-sm text-slate-500">{expense.paidBy.name}، {formatToman(expense.amount)}</p>
             </Link>

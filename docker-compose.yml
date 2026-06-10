@@ -26,6 +26,7 @@ services:
       DATABASE_URL: postgresql://postgres:postgres@postgres:5432/daria_dong?schema=public
       SESSION_SECRET: change-this-in-production
       APP_SHARED_PASSWORD: dong123456
+      ADMIN_PASSWORD: change-this-admin-password
       PORT: ${APP_PORT:-3000}
     ports:
       - "${APP_PORT:-3000}:3000"

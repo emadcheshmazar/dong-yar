@@ -4,18 +4,24 @@ import { AppShell } from "@/components/nav";
 import { Badge } from "@/components/badge";
 import { Card } from "@/components/ui/card";
 import { Input, Select } from "@/components/ui/input";
+import { requirePerson } from "@/lib/auth";
 import { getExpenses, getPeople } from "@/lib/queries";
 import { formatDate, formatToman } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
 
 export default async function ExpensesPage({
+  params: routeParams,
   searchParams,
 }: {
+  params: Promise<{ group: string }>;
   searchParams: Promise<Record<string, string | undefined>>;
 }) {
+  const { group } = await routeParams;
+  const current = await requirePerson(group);
   const params = await searchParams;
-  const [expenses, people] = await Promise.all([getExpenses(), getPeople()]);
+  const [expenses, people] = await Promise.all([getExpenses(current.groupId), getPeople(current.groupId)]);
+  const prefix = `/${current.group.slug}`;
   const query = params.q ?? "";
   const payer = params.payer ?? "";
   const status = params.status ?? "all";
@@ -32,13 +38,13 @@ export default async function ExpensesPage({
     return matchesQuery && matchesPayer && matchesStatus && matchesFrom && matchesTo;
   });
   return (
-    <AppShell>
+    <AppShell groupSlug={current.group.slug}>
       <div className="mb-6 flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
         <div>
           <h1 className="text-3xl font-black">همه خرج‌ها</h1>
           <p className="mt-1 text-sm text-slate-600">همه می‌بینن، همه می‌تونن خرج ثبت کنن.</p>
         </div>
-        <Link className="inline-flex h-11 items-center gap-2 rounded-xl bg-emerald-600 px-4 text-sm font-bold text-white" href="/expenses/new">
+        <Link className="inline-flex h-11 items-center gap-2 rounded-xl bg-emerald-600 px-4 text-sm font-bold text-white" href={`${prefix}/expenses/new`}>
           <PlusCircle className="size-4" />
           ثبت خرج جدید
         </Link>
@@ -80,7 +86,7 @@ export default async function ExpensesPage({
               <span className="text-sm">{expense.participants.length} نفر</span>
               <span className="text-sm">{formatToman(share)}</span>
               <Badge tone={unpaid.length ? "amber" : "green"}>{unpaid.length ? `${unpaid.length} نفر هنوز دنگ ندادن` : "همه حساب کردن"}</Badge>
-              <Link className="inline-flex size-10 items-center justify-center rounded-xl bg-emerald-50 text-emerald-800" href={`/expenses/${expense.id}`}>
+              <Link className="inline-flex size-10 items-center justify-center rounded-xl bg-emerald-50 text-emerald-800" href={`${prefix}/expenses/${expense.id}`}>
                 <Eye className="size-4" />
               </Link>
             </Card>

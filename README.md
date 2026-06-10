@@ -23,6 +23,8 @@ cp .env.example .env
 - `SESSION_SECRET`: رشته بلند و تصادفی برای امضای کوکی
 - `APP_SHARED_PASSWORD`: رمز ورود برنامه
 - `APP_SHARED_PASSWORD_HASH`: جایگزین امن‌تر برای رمز خام، در صورت نیاز
+- `ADMIN_PASSWORD`: رمز ورود پنل ادمین
+- `ADMIN_PASSWORD_HASH`: جایگزین امن‌تر برای رمز خام ادمین، در صورت نیاز
 
 ## اجرای محلی
 
@@ -37,7 +39,9 @@ npm run dev
 
 رمز ورود پیش‌فرض: `dong123456`
 
-اگر دیتابیس خالی باشد، اولین ورود با هر نام کاربری دلخواه، همان کاربر را به عنوان اولین عضو ثابت می‌سازد. بعد از آن فقط اعضای ثبت‌شده می‌توانند وارد شوند.
+ورود کاربران گروهی است. ادمین باید اول از `/admin` گروه و کاربران همان گروه را بسازد. کاربرها در صفحه اصلی فقط شناسه گروه، مثل `marketing`، را وارد می‌کنند و بعد وارد صفحه لاگین همان گروه می‌شوند.
+
+رمز ادمین در Docker به صورت پیش‌فرض `change-this-admin-password` است و باید در production عوض شود.
 
 ## Docker
 
@@ -55,6 +59,12 @@ APP_PORT=8080 docker compose up --build
 
 ```bash
 docker compose exec app npm run seed
+```
+
+پنل ادمین:
+
+```text
+http://localhost:3000/admin
 ```
 
 ## مهاجرت‌ها و seed
@@ -79,7 +89,7 @@ npm run seed
 
 ## یادداشت استقرار داخلی
 
-- `SESSION_SECRET` را در production حتما عوض کنید.
+- `SESSION_SECRET` و `ADMIN_PASSWORD` را در production حتما عوض کنید.
 - اگر از `APP_SHARED_PASSWORD_HASH` استفاده می‌کنید، `APP_SHARED_PASSWORD` را حذف کنید.
 - دیتابیس PostgreSQL باید قبل از اجرای app در دسترس باشد.
 - حذف خرج به صورت نرم انجام می‌شود و status به `CANCELLED` تغییر می‌کند.

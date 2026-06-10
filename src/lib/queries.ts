@@ -10,8 +10,19 @@ export const expenseInclude = {
   },
 };
 
-export async function getPeople() {
+export async function getGroupBySlug(slug: string, includeInactive = false) {
+  const normalizedSlug = slug.trim().toLowerCase();
+  return prisma.group.findFirst({
+    where: {
+      slug: normalizedSlug,
+      ...(includeInactive ? {} : { isActive: true }),
+    },
+  });
+}
+
+export async function getPeople(groupId: string) {
   const people = await prisma.person.findMany({
+    where: { groupId },
     orderBy: [{ type: "asc" }, { createdAt: "asc" }],
   });
   return {
@@ -20,30 +31,30 @@ export async function getPeople() {
   };
 }
 
-export async function getActivePeople() {
+export async function getActivePeople(groupId: string) {
   return prisma.person.findMany({
-    where: { isActive: true },
+    where: { groupId, isActive: true },
     orderBy: [{ type: "asc" }, { createdAt: "asc" }],
   });
 }
 
-export async function getExpenses() {
+export async function getExpenses(groupId: string) {
   return prisma.expense.findMany({
-    where: { status: ExpenseStatus.ACTIVE },
+    where: { groupId, status: ExpenseStatus.ACTIVE },
     include: expenseInclude,
     orderBy: { date: "desc" },
   });
 }
 
-export async function getExpense(id: string) {
+export async function getExpense(groupId: string, id: string) {
   return prisma.expense.findFirst({
-    where: { id, status: ExpenseStatus.ACTIVE },
+    where: { id, groupId, status: ExpenseStatus.ACTIVE },
     include: expenseInclude,
   });
 }
 
-export async function getDashboard(personId: string) {
-  const expenses = await getExpenses();
+export async function getDashboard(groupId: string, personId: string) {
+  const expenses = await getExpenses(groupId);
   const myDebts = expenses
     .map((expense) => ({
       expense,
@@ -76,4 +87,34 @@ export async function getDashboard(personId: string) {
     receivable,
     balance: receivable - debt,
   };
+}
+
+export async function getAdminGroups() {
+  return prisma.group.findMany({
+    include: {
+      _count: {
+        select: {
+          people: true,
+          expenses: true,
+        },
+      },
+    },
+    orderBy: { createdAt: "desc" },
+  });
+}
+
+export async function getAdminGroup(slug: string) {
+  return prisma.group.findUnique({
+    where: { slug },
+    include: {
+      people: {
+        orderBy: [{ type: "asc" }, { createdAt: "asc" }],
+      },
+      expenses: {
+        where: { status: ExpenseStatus.ACTIVE },
+        include: expenseInclude,
+        orderBy: { date: "desc" },
+      },
+    },
+  });
 }

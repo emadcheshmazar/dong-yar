@@ -13,13 +13,17 @@ type PersonOption = Pick<Person, "id" | "name" | "type">;
 type ExpenseForEdit = Expense & { participants: ExpenseParticipant[] };
 
 export function ExpenseForm({
+  groupSlug,
   people,
   currentPersonId,
   expense,
+  adminMode = false,
 }: {
+  groupSlug: string;
   people: PersonOption[];
   currentPersonId: string;
   expense?: ExpenseForEdit;
+  adminMode?: boolean;
 }) {
   const [amount, setAmount] = useState(expense?.amount ?? 0);
   const [selected, setSelected] = useState<string[]>(expense?.participants.map((p) => p.personId) ?? [currentPersonId]);
@@ -48,6 +52,8 @@ export function ExpenseForm({
 
   return (
     <form action={action} className="grid gap-5 lg:grid-cols-[1fr_360px]">
+      <input type="hidden" name="groupSlug" value={groupSlug} />
+      {adminMode ? <input type="hidden" name="adminMode" value="on" /> : null}
       {expense ? <input type="hidden" name="id" value={expense.id} /> : null}
       {localGuests.map((guest) => (
         <input key={guest.id} type="hidden" name="localGuests" value={`${guest.id}|||${guest.name}`} />

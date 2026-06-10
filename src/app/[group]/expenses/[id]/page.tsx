@@ -13,16 +13,17 @@ import { formatDate, formatToman } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
 
-export default async function ExpenseDetailPage({ params }: { params: Promise<{ id: string }> }) {
-  const [{ id }, current] = await Promise.all([params, requirePerson()]);
-  const expense = await getExpense(id);
+export default async function ExpenseDetailPage({ params }: { params: Promise<{ group: string; id: string }> }) {
+  const { group, id } = await params;
+  const current = await requirePerson(group);
+  const expense = await getExpense(current.groupId, id);
   if (!expense) notFound();
   const paid = expense.participants.filter((p) => p.paymentStatus === "PAID");
   const unpaid = expense.participants.filter((p) => p.personId !== expense.paidByPersonId && p.paymentStatus === "UNPAID");
   const share = expense.participants[0]?.shareAmount ?? 0;
   const isCreator = expense.createdByPersonId === current.id;
   return (
-    <AppShell>
+    <AppShell groupSlug={current.group.slug}>
       <div className="mb-6 flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
         <div>
           <h1 className="text-3xl font-black">{expense.title}</h1>
@@ -30,11 +31,12 @@ export default async function ExpenseDetailPage({ params }: { params: Promise<{ 
         </div>
         {isCreator ? (
           <div className="flex gap-2">
-            <Link className="inline-flex h-10 items-center gap-2 rounded-xl bg-amber-100 px-4 text-sm font-bold text-amber-950" href={`/expenses/${expense.id}/edit`}>
+            <Link className="inline-flex h-10 items-center gap-2 rounded-xl bg-amber-100 px-4 text-sm font-bold text-amber-950" href={`/${current.group.slug}/expenses/${expense.id}/edit`}>
               <Pencil className="size-4" />
               ویرایش خرج
             </Link>
             <form action={deleteExpenseAction}>
+              <input type="hidden" name="groupSlug" value={current.group.slug} />
               <input type="hidden" name="id" value={expense.id} />
               <Button variant="danger">
                 <Trash2 className="size-4" />
@@ -78,9 +80,9 @@ export default async function ExpenseDetailPage({ params }: { params: Promise<{ 
                 </Badge>
                 <div>
                   {isOwnDebt ? (
-                    <MarkPaidButton expenseId={expense.id} payer={expense.paidBy.name} amount={participant.shareAmount} note={expense.cardNumber || expense.paymentNote} />
+                    <MarkPaidButton groupSlug={current.group.slug} expenseId={expense.id} payer={expense.paidBy.name} amount={participant.shareAmount} note={expense.cardNumber || expense.paymentNote} />
                   ) : participant.person.type === "GUEST" && !isPayer ? (
-                    <ToggleGuestPaymentButton participantId={participant.id} />
+                    <ToggleGuestPaymentButton groupSlug={current.group.slug} participantId={participant.id} />
                   ) : null}
                 </div>
               </div>

@@ -1,12 +1,33 @@
 import { z } from "zod";
 
 export const loginSchema = z.object({
+  groupSlug: z.string().trim().min(1, "گروه را انتخاب کن.").optional(),
   username: z.string().trim().min(1, "نام کاربری را وارد کن."),
   password: z.string().min(1, "رمز ورود را وارد کن."),
 });
 
+export const groupLookupSchema = z.object({
+  groupSlug: z.string().trim().min(1, "نام گروه را وارد کن."),
+});
+
+export const adminLoginSchema = z.object({
+  password: z.string().min(1, "رمز ادمین را وارد کن."),
+});
+
+export const groupSchema = z.object({
+  id: z.string().optional(),
+  name: z.string().trim().min(2, "نام گروه کوتاه است."),
+  slug: z
+    .string()
+    .trim()
+    .min(2, "شناسه گروه کوتاه است.")
+    .regex(/^[a-z0-9-]+$/, "شناسه گروه فقط حروف انگلیسی کوچک، عدد و خط تیره باشد."),
+  isActive: z.coerce.boolean().optional(),
+});
+
 export const personSchema = z.object({
   id: z.string().optional(),
+  groupId: z.string().min(1, "گروه مشخص نیست.").optional(),
   name: z.string().trim().min(2, "نام کوتاه است."),
   username: z.string().trim().optional(),
   type: z.enum(["MEMBER", "GUEST"]),

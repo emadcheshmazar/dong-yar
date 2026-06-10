@@ -93,9 +93,9 @@ export default async function AdminGroupPage({ params }: { params: Promise<{ gro
               </label>
               <label className="flex items-center gap-2 text-sm font-bold">
                 <input name="isGroupAdmin" type="checkbox" className="size-5 accent-emerald-600" />
-                ادمین گروه
+                ادمین هست
               </label>
-              <PasswordInput name="password" placeholder="رمز اختصاصی اختیاری" />
+              <PasswordInput name="password" placeholder="رمز اختیاری؛ خالی یعنی رمز مشترک" />
               <Button className="md:col-span-3">
                 <UserPlus className="size-4" />
                 افزودن عضو
@@ -117,7 +117,7 @@ export default async function AdminGroupPage({ params }: { params: Promise<{ gro
                   </label>
                   <label className="flex items-center gap-2 text-sm font-bold">
                     <input name="isGroupAdmin" type="checkbox" defaultChecked={member.isGroupAdmin} className="size-5 accent-emerald-600" />
-                    ادمین
+                    ادمین هست
                   </label>
                   <Button variant="outline">ذخیره</Button>
                   <Button form={`delete-person-${member.id}`} variant="danger" type="submit">حذف</Button>

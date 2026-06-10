@@ -122,7 +122,9 @@ export async function groupAdminLoginAction(_: unknown, formData: FormData) {
     },
   });
   if (!person) return { error: "این ادمین برای گروه پیدا نشد." };
-  const ok = await verifyPersonPassword(parsed.data.password, person.passwordHash);
+  const ok = person.passwordHash
+    ? await verifyPersonPassword(parsed.data.password, person.passwordHash)
+    : await verifySharedPassword(parsed.data.password);
   if (!ok) return { error: "رمز ادمین گروه درست نیست." };
   await createGroupAdminSession(person.id);
   redirect(`/${group.slug}/admin`);
@@ -210,9 +212,6 @@ export async function upsertPersonAction(formData: FormData) {
   const existing = parsed.id ? await prisma.person.findFirst({ where: { id: parsed.id, groupId: group.id } }) : null;
   if (parsed.id && !existing) throw new Error("کاربر در این گروه پیدا نشد.");
   const isGroupAdmin = parsed.type === "MEMBER" ? Boolean(parsed.isGroupAdmin) : false;
-  if (isGroupAdmin && !parsed.password && !existing?.passwordHash) {
-    throw new Error("برای ادمین گروه باید رمز تعیین شود.");
-  }
   const passwordHash = parsed.password ? await bcrypt.hash(parsed.password, 12) : existing?.passwordHash ?? null;
   const data = {
     groupId: parsed.groupId,

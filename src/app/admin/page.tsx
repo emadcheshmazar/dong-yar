@@ -77,7 +77,7 @@ export default async function AdminPage() {
                 <p className="mt-1 text-sm text-slate-600">
                   ادمین گروه:{" "}
                   {group.people.length
-                    ? group.people.map((person) => person.username || person.name).join("، ")
+                    ? group.people.map((person) => person.name).join("، ")
                     : "ثبت نشده"}
                 </p>
               </div>

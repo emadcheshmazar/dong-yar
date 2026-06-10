@@ -196,7 +196,7 @@ export async function deleteGroupAction(formData: FormData) {
 
 export async function upsertPersonAction(formData: FormData) {
   const groupSlug = normalizeSlug(String(formData.get("groupSlug") ?? ""));
-  const { group } = await requireGroupManager(groupSlug);
+  const { group, centralAdmin } = await requireGroupManager(groupSlug);
   const parsed = personSchema.parse({
     id: formData.get("id")?.toString() || undefined,
     groupId: formData.get("groupId"),
@@ -212,7 +212,8 @@ export async function upsertPersonAction(formData: FormData) {
   const existing = parsed.id ? await prisma.person.findFirst({ where: { id: parsed.id, groupId: group.id } }) : null;
   if (parsed.id && !existing) throw new Error("کاربر در این گروه پیدا نشد.");
   const isGroupAdmin = parsed.type === "MEMBER" ? Boolean(parsed.isGroupAdmin) : false;
-  const passwordHash = parsed.password ? await bcrypt.hash(parsed.password, 12) : existing?.passwordHash ?? null;
+  const passwordHash =
+    !centralAdmin && parsed.password ? await bcrypt.hash(parsed.password, 12) : existing?.passwordHash ?? null;
   const data = {
     groupId: parsed.groupId,
     name: parsed.name,

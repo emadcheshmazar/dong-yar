@@ -12,7 +12,6 @@ import { Badge } from "@/components/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { PasswordInput } from "@/components/ui/password-input";
 import { requireAdmin } from "@/lib/auth";
 import { getAdminGroup } from "@/lib/queries";
 import { formatDate, formatToman } from "@/lib/utils";
@@ -41,9 +40,6 @@ export default async function AdminGroupPage({ params }: { params: Promise<{ gro
           </div>
           <Link className="inline-flex h-10 items-center justify-center rounded-xl bg-slate-900 px-4 text-sm font-bold text-white" href={`/${group.slug}/login`}>
             ورود به فلوی گروه
-          </Link>
-          <Link className="inline-flex h-10 items-center justify-center rounded-xl bg-emerald-600 px-4 text-sm font-bold text-white" href={`/${group.slug}/admin/login`}>
-            ورود ادمین گروه
           </Link>
         </div>
       </header>
@@ -95,7 +91,6 @@ export default async function AdminGroupPage({ params }: { params: Promise<{ gro
                 <input name="isGroupAdmin" type="checkbox" className="size-5 accent-emerald-600" />
                 ادمین هست
               </label>
-              <PasswordInput name="password" placeholder="رمز اختیاری؛ خالی یعنی رمز مشترک" />
               <Button className="md:col-span-3">
                 <UserPlus className="size-4" />
                 افزودن عضو
@@ -110,7 +105,6 @@ export default async function AdminGroupPage({ params }: { params: Promise<{ gro
                   <input type="hidden" name="type" value="MEMBER" />
                   <Input name="name" defaultValue={member.name} />
                   <Input name="username" defaultValue={member.username ?? ""} />
-                  <PasswordInput name="password" placeholder="رمز جدید اختیاری" />
                   <label className="flex items-center gap-2 text-sm font-bold">
                     <input name="isActive" type="checkbox" defaultChecked={member.isActive} className="size-5 accent-emerald-600" />
                     فعال

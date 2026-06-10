@@ -1,11 +1,23 @@
 import { ExpenseStatus, PaymentStatus, PersonType } from "@prisma/client";
 import { prisma } from "@/lib/db";
 
+const personPublicSelect = {
+  id: true,
+  groupId: true,
+  name: true,
+  username: true,
+  type: true,
+  isGroupAdmin: true,
+  isActive: true,
+  createdAt: true,
+  updatedAt: true,
+} as const;
+
 export const expenseInclude = {
-  paidBy: true,
-  createdBy: true,
+  paidBy: { select: personPublicSelect },
+  createdBy: { select: personPublicSelect },
   participants: {
-    include: { person: true },
+    include: { person: { select: personPublicSelect } },
     orderBy: { createdAt: "asc" as const },
   },
 };
@@ -23,6 +35,7 @@ export async function getGroupBySlug(slug: string, includeInactive = false) {
 export async function getPeople(groupId: string) {
   const people = await prisma.person.findMany({
     where: { groupId },
+    select: personPublicSelect,
     orderBy: [{ type: "asc" }, { createdAt: "asc" }],
   });
   return {
@@ -34,6 +47,7 @@ export async function getPeople(groupId: string) {
 export async function getActivePeople(groupId: string) {
   return prisma.person.findMany({
     where: { groupId, isActive: true },
+    select: personPublicSelect,
     orderBy: [{ type: "asc" }, { createdAt: "asc" }],
   });
 }
@@ -94,7 +108,7 @@ export async function getAdminGroups() {
     include: {
       people: {
         where: { isGroupAdmin: true, type: PersonType.MEMBER },
-        select: { id: true, name: true, username: true, isActive: true },
+        select: { id: true, name: true, isActive: true },
         orderBy: { createdAt: "asc" },
       },
       _count: {
@@ -113,6 +127,7 @@ export async function getAdminGroup(slug: string) {
     where: { slug },
     include: {
       people: {
+        select: personPublicSelect,
         orderBy: [{ type: "asc" }, { createdAt: "asc" }],
       },
       expenses: {

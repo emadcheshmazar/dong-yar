@@ -1,4 +1,5 @@
-import { UsersRound } from "lucide-react";
+import Link from "next/link";
+import { UserPlus, UsersRound } from "lucide-react";
 import { Badge } from "@/components/badge";
 import { AppShell } from "@/components/nav";
 import { Card } from "@/components/ui/card";
@@ -13,9 +14,22 @@ export default async function PeoplePage({ params }: { params: Promise<{ group: 
   const people = await getPeople(current.groupId);
   return (
     <AppShell groupSlug={current.group.slug}>
-      <div className="mb-6">
-        <h1 className="text-3xl font-black">افراد گروه</h1>
-        <p className="mt-1 text-sm text-slate-600">مدیریت افراد فقط از پنل ادمین انجام می‌شود.</p>
+      <div className="mb-6 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+        <div>
+          <h1 className="text-3xl font-black">افراد گروه</h1>
+          <p className="mt-1 text-sm text-slate-600">
+            {current.isGroupAdmin ? "ادمین گروه می‌تواند افراد را از پنل همین گروه مدیریت کند." : "مدیریت افراد فقط از پنل ادمین انجام می‌شود."}
+          </p>
+        </div>
+        {current.isGroupAdmin ? (
+          <Link
+            href={`/${current.group.slug}/admin#members`}
+            className="inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 text-sm font-semibold text-white shadow-sm hover:bg-emerald-700"
+          >
+            <UserPlus className="size-4" />
+            افزودن عضو
+          </Link>
+        ) : null}
       </div>
       <div className="grid gap-5 lg:grid-cols-2">
         <Card>

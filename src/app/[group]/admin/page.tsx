@@ -49,7 +49,7 @@ export default async function GroupAdminPage({ params }: { params: Promise<{ gro
         </div>
       </header>
       <div className="mx-auto grid max-w-6xl gap-5 px-4 py-6">
-        <section className="grid gap-5 lg:grid-cols-2">
+        <section id="members" className="scroll-mt-24 grid gap-5 lg:grid-cols-2">
           <Card>
             <div className="mb-4 flex items-center gap-2">
               <UsersRound className="size-5 text-emerald-600" />

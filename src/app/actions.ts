@@ -3,12 +3,17 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { ExpenseStatus, PaymentStatus, PersonType } from "@prisma/client";
+import bcrypt from "bcryptjs";
 import {
   createAdminSession,
+  createGroupAdminSession,
   createSession,
+  getCurrentAdmin,
   requireAdmin,
+  requireGroupAdmin,
   requirePerson,
   verifyAdminPassword,
+  verifyPersonPassword,
   verifySharedPassword,
 } from "@/lib/auth";
 import { prisma } from "@/lib/db";
@@ -16,6 +21,7 @@ import { calculateShare } from "@/lib/utils";
 import {
   adminLoginSchema,
   expenseSchema,
+  groupAdminLoginSchema,
   groupLookupSchema,
   groupSchema,
   loginSchema,
@@ -37,6 +43,19 @@ async function getGroupForSlug(slug: string, includeInactive = false) {
       ...(includeInactive ? {} : { isActive: true }),
     },
   });
+}
+
+async function requireGroupManager(groupSlug: string) {
+  const centralAdmin = await getCurrentAdmin();
+  const group = await getGroupForSlug(groupSlug, Boolean(centralAdmin));
+  if (!group) throw new Error("گروه پیدا نشد یا فعال نیست.");
+  if (centralAdmin) return { group, centralAdmin: true, groupAdminId: null as string | null };
+  const groupAdmin = await requireGroupAdmin(group.slug);
+  return { group: groupAdmin.group, centralAdmin: false, groupAdminId: groupAdmin.id };
+}
+
+function managerPath(groupSlug: string, managerScope: string) {
+  return managerScope === "group" ? `/${groupSlug}/admin` : `/admin/groups/${groupSlug}`;
 }
 
 export async function selectGroupAction(_: unknown, formData: FormData) {
@@ -82,6 +101,31 @@ export async function adminLoginAction(_: unknown, formData: FormData) {
   redirect("/admin");
 }
 
+export async function groupAdminLoginAction(_: unknown, formData: FormData) {
+  const parsed = groupAdminLoginSchema.safeParse({
+    groupSlug: normalizeSlug(String(formData.get("groupSlug") ?? "")),
+    username: formData.get("username"),
+    password: formData.get("password"),
+  });
+  if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "ورود ادمین گروه ناموفق بود." };
+  const group = await getGroupForSlug(parsed.data.groupSlug);
+  if (!group) return { error: "این گروه وجود ندارد یا فعال نیست." };
+  const person = await prisma.person.findFirst({
+    where: {
+      groupId: group.id,
+      username: parsed.data.username,
+      type: PersonType.MEMBER,
+      isGroupAdmin: true,
+      isActive: true,
+    },
+  });
+  if (!person) return { error: "این ادمین برای گروه پیدا نشد." };
+  const ok = await verifyPersonPassword(parsed.data.password, person.passwordHash);
+  if (!ok) return { error: "رمز ادمین گروه درست نیست." };
+  await createGroupAdminSession(person.id);
+  redirect(`/${group.slug}/admin`);
+}
+
 export async function upsertGroupAction(formData: FormData) {
   await requireAdmin();
   const parsed = groupSchema.parse({
@@ -89,6 +133,9 @@ export async function upsertGroupAction(formData: FormData) {
     name: formData.get("name"),
     slug: normalizeSlug(String(formData.get("slug") ?? "")),
     isActive: formData.get("isActive") === "on",
+    adminName: formData.get("adminName"),
+    adminUsername: formData.get("adminUsername"),
+    adminPassword: formData.get("adminPassword"),
   });
   const data = {
     name: parsed.name,
@@ -100,7 +147,25 @@ export async function upsertGroupAction(formData: FormData) {
     revalidatePath("/admin");
     redirect(`/admin/groups/${data.slug}`);
   }
-  const group = await prisma.group.create({ data });
+  if (!parsed.adminName || !parsed.adminUsername || !parsed.adminPassword) {
+    throw new Error("برای ساخت گروه باید نام، نام کاربری و رمز ادمین گروه را وارد کنید.");
+  }
+  const passwordHash = await bcrypt.hash(parsed.adminPassword, 12);
+  const group = await prisma.group.create({
+    data: {
+      ...data,
+      people: {
+        create: {
+          name: parsed.adminName,
+          username: parsed.adminUsername,
+          passwordHash,
+          type: PersonType.MEMBER,
+          isGroupAdmin: true,
+          isActive: true,
+        },
+      },
+    },
+  });
   revalidatePath("/admin");
   redirect(`/admin/groups/${group.slug}`);
 }
@@ -126,23 +191,34 @@ export async function deleteGroupAction(formData: FormData) {
 }
 
 export async function upsertPersonAction(formData: FormData) {
-  await requireAdmin();
   const groupSlug = normalizeSlug(String(formData.get("groupSlug") ?? ""));
+  const { group } = await requireGroupManager(groupSlug);
   const parsed = personSchema.parse({
     id: formData.get("id")?.toString() || undefined,
     groupId: formData.get("groupId"),
     name: formData.get("name"),
     username: formData.get("username")?.toString() || undefined,
     type: formData.get("type"),
+    isGroupAdmin: formData.get("isGroupAdmin") === "on",
+    password: formData.get("password")?.toString() || undefined,
     isActive: formData.get("isActive") === "on",
   });
-  if (!parsed.groupId) throw new Error("گروه مشخص نیست.");
+  if (!parsed.groupId || parsed.groupId !== group.id) throw new Error("گروه مشخص نیست.");
   if (parsed.type === "MEMBER" && !parsed.username) throw new Error("عضو ثابت باید نام کاربری داشته باشد.");
+  const existing = parsed.id ? await prisma.person.findFirst({ where: { id: parsed.id, groupId: group.id } }) : null;
+  if (parsed.id && !existing) throw new Error("کاربر در این گروه پیدا نشد.");
+  const isGroupAdmin = parsed.type === "MEMBER" ? Boolean(parsed.isGroupAdmin) : false;
+  if (isGroupAdmin && !parsed.password && !existing?.passwordHash) {
+    throw new Error("برای ادمین گروه باید رمز تعیین شود.");
+  }
+  const passwordHash = parsed.password ? await bcrypt.hash(parsed.password, 12) : existing?.passwordHash ?? null;
   const data = {
     groupId: parsed.groupId,
     name: parsed.name,
     username: parsed.type === "MEMBER" ? parsed.username : null,
+    passwordHash: parsed.type === "MEMBER" ? passwordHash : null,
     type: parsed.type,
+    isGroupAdmin,
     isActive: parsed.isActive ?? true,
   };
   if (parsed.id) {
@@ -151,12 +227,16 @@ export async function upsertPersonAction(formData: FormData) {
     await prisma.person.create({ data });
   }
   revalidatePath(`/admin/groups/${groupSlug}`);
+  revalidatePath(`/${groupSlug}/admin`);
 }
 
 export async function deletePersonAction(formData: FormData) {
-  await requireAdmin();
   const id = String(formData.get("id") ?? "");
   const groupSlug = normalizeSlug(String(formData.get("groupSlug") ?? ""));
+  const { group, groupAdminId } = await requireGroupManager(groupSlug);
+  if (groupAdminId === id) throw new Error("ادمین گروه نمی‌تواند خودش را حذف کند.");
+  const person = await prisma.person.findFirst({ where: { id, groupId: group.id } });
+  if (!person) throw new Error("کاربر در این گروه پیدا نشد.");
   const [paidExpenses, createdExpenses, participations, markedPayments] = await Promise.all([
     prisma.expense.count({ where: { paidByPersonId: id } }),
     prisma.expense.count({ where: { createdByPersonId: id } }),
@@ -169,15 +249,17 @@ export async function deletePersonAction(formData: FormData) {
     await prisma.person.delete({ where: { id } });
   }
   revalidatePath(`/admin/groups/${groupSlug}`);
+  revalidatePath(`/${groupSlug}/admin`);
 }
 
 async function saveExpense(formData: FormData, mode: "create" | "edit") {
   const groupSlug = normalizeSlug(String(formData.get("groupSlug") ?? ""));
   const isAdminMode = formData.get("adminMode") === "on";
-  const group = await getGroupForSlug(groupSlug, isAdminMode);
+  const managerScope = String(formData.get("managerScope") ?? "central");
+  const manager = isAdminMode ? await requireGroupManager(groupSlug) : null;
+  const group = manager?.group ?? (await getGroupForSlug(groupSlug, isAdminMode));
   if (!group) throw new Error("گروه پیدا نشد.");
   const current = isAdminMode ? null : await requirePerson(group.slug);
-  if (isAdminMode) await requireAdmin();
 
   const localGuests = formStringArray(formData, "localGuests").map((value) => {
     const [tempId, name] = value.split("|||");
@@ -252,7 +334,8 @@ async function saveExpense(formData: FormData, mode: "create" | "edit") {
     ]);
     revalidatePath(`/${group.slug}/expenses/${existing!.id}`);
     revalidatePath(`/admin/groups/${group.slug}`);
-    redirect(isAdminMode ? `/admin/groups/${group.slug}` : `/${group.slug}/expenses/${existing!.id}`);
+    revalidatePath(`/${group.slug}/admin`);
+    redirect(isAdminMode ? managerPath(group.slug, managerScope) : `/${group.slug}/expenses/${existing!.id}`);
   }
 
   const expense = await prisma.expense.create({
@@ -271,7 +354,8 @@ async function saveExpense(formData: FormData, mode: "create" | "edit") {
   });
   revalidatePath(`/${group.slug}/expenses`);
   revalidatePath(`/admin/groups/${group.slug}`);
-  redirect(isAdminMode ? `/admin/groups/${group.slug}` : `/${group.slug}/expenses/${expense.id}`);
+  revalidatePath(`/${group.slug}/admin`);
+  redirect(isAdminMode ? managerPath(group.slug, managerScope) : `/${group.slug}/expenses/${expense.id}`);
 }
 
 export async function createExpenseAction(formData: FormData) {
@@ -285,10 +369,11 @@ export async function editExpenseAction(formData: FormData) {
 export async function deleteExpenseAction(formData: FormData) {
   const groupSlug = normalizeSlug(String(formData.get("groupSlug") ?? ""));
   const isAdminMode = formData.get("adminMode") === "on";
-  const group = await getGroupForSlug(groupSlug, isAdminMode);
+  const managerScope = String(formData.get("managerScope") ?? "central");
+  const manager = isAdminMode ? await requireGroupManager(groupSlug) : null;
+  const group = manager?.group ?? (await getGroupForSlug(groupSlug, isAdminMode));
   if (!group) throw new Error("گروه پیدا نشد.");
   const current = isAdminMode ? null : await requirePerson(group.slug);
-  if (isAdminMode) await requireAdmin();
   const id = String(formData.get("id") ?? "");
   const expense = await prisma.expense.findFirst({
     where: { id, groupId: group.id, status: ExpenseStatus.ACTIVE },
@@ -299,7 +384,8 @@ export async function deleteExpenseAction(formData: FormData) {
   await prisma.expense.update({ where: { id }, data: { status: ExpenseStatus.CANCELLED } });
   revalidatePath(`/${group.slug}/expenses`);
   revalidatePath(`/admin/groups/${group.slug}`);
-  redirect(isAdminMode ? `/admin/groups/${group.slug}` : `/${group.slug}/expenses`);
+  revalidatePath(`/${group.slug}/admin`);
+  redirect(isAdminMode ? managerPath(group.slug, managerScope) : `/${group.slug}/expenses`);
 }
 
 export async function markPaidAction(formData: FormData) {

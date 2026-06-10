@@ -92,6 +92,11 @@ export async function getDashboard(groupId: string, personId: string) {
 export async function getAdminGroups() {
   return prisma.group.findMany({
     include: {
+      people: {
+        where: { isGroupAdmin: true, type: PersonType.MEMBER },
+        select: { id: true, name: true, username: true, isActive: true },
+        orderBy: { createdAt: "asc" },
+      },
       _count: {
         select: {
           people: true,

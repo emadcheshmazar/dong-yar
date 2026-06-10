@@ -1,79 +1,53 @@
 import Link from "next/link";
-import { notFound } from "next/navigation";
-import { ArrowRight, Pencil, PlusCircle, Trash2, UserPlus, UsersRound } from "lucide-react";
-import {
-  deleteExpenseAction,
-  deleteGroupAction,
-  deletePersonAction,
-  upsertGroupAction,
-  upsertPersonAction,
-} from "@/app/actions";
+import { notFound, redirect } from "next/navigation";
+import { LogOut, Pencil, PlusCircle, UserPlus, UsersRound } from "lucide-react";
+import { deleteExpenseAction, deletePersonAction, upsertPersonAction } from "@/app/actions";
 import { Badge } from "@/components/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { requireAdmin } from "@/lib/auth";
+import { destroyGroupAdminSession, requireGroupAdmin } from "@/lib/auth";
 import { getAdminGroup } from "@/lib/queries";
 import { formatDate, formatToman } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
 
-export default async function AdminGroupPage({ params }: { params: Promise<{ group: string }> }) {
-  await requireAdmin();
+export default async function GroupAdminPage({ params }: { params: Promise<{ group: string }> }) {
   const { group: groupSlug } = await params;
-  const group = await getAdminGroup(groupSlug);
+  const currentAdmin = await requireGroupAdmin(groupSlug);
+  const group = await getAdminGroup(currentAdmin.group.slug);
   if (!group) notFound();
   const members = group.people.filter((person) => person.type === "MEMBER");
   const guests = group.people.filter((person) => person.type === "GUEST");
+
+  async function logout() {
+    "use server";
+    await destroyGroupAdminSession();
+    redirect(`/${groupSlug}/admin/login`);
+  }
 
   return (
     <main className="min-h-screen bg-[#f8faf2] text-slate-900">
       <header className="border-b border-slate-200 bg-white/90">
         <div className="mx-auto flex max-w-6xl flex-col gap-3 px-4 py-4 md:flex-row md:items-center md:justify-between">
           <div>
-            <Link href="/admin" className="mb-2 inline-flex items-center gap-2 text-sm font-bold text-slate-500 hover:text-emerald-700">
-              <ArrowRight className="size-4" />
-              برگشت به گروه‌ها
-            </Link>
-            <h1 className="text-2xl font-black">مدیریت {group.name}</h1>
-            <p className="text-sm text-slate-600" dir="ltr">/{group.slug}</p>
+            <h1 className="text-2xl font-black">پنل ادمین {group.name}</h1>
+            <p className="text-sm text-slate-600">سلام {currentAdmin.name}، فقط همین گروه در اختیار توست.</p>
           </div>
-          <Link className="inline-flex h-10 items-center justify-center rounded-xl bg-slate-900 px-4 text-sm font-bold text-white" href={`/${group.slug}/login`}>
-            ورود به فلوی گروه
-          </Link>
-          <Link className="inline-flex h-10 items-center justify-center rounded-xl bg-emerald-600 px-4 text-sm font-bold text-white" href={`/${group.slug}/admin/login`}>
-            ورود ادمین گروه
-          </Link>
+          <div className="flex flex-wrap gap-2">
+            <Link className="inline-flex h-10 items-center justify-center rounded-xl bg-slate-900 px-4 text-sm font-bold text-white" href={`/${group.slug}/login`}>
+              ورود به فلوی گروه
+            </Link>
+            <form action={logout}>
+              <Button variant="ghost">
+                <LogOut className="size-4" />
+                خروج
+              </Button>
+            </form>
+          </div>
         </div>
       </header>
       <div className="mx-auto grid max-w-6xl gap-5 px-4 py-6">
-        <section className="grid gap-5 lg:grid-cols-[1fr_320px]">
-          <Card>
-            <h2 className="mb-4 text-xl font-black">تنظیمات گروه</h2>
-            <form action={upsertGroupAction} className="grid gap-3 md:grid-cols-[1fr_1fr_auto_auto]">
-              <input type="hidden" name="id" value={group.id} />
-              <Input name="name" defaultValue={group.name} required />
-              <Input name="slug" dir="ltr" className="text-left" defaultValue={group.slug} required />
-              <label className="flex items-center gap-2 text-sm font-bold">
-                <input name="isActive" type="checkbox" defaultChecked={group.isActive} className="size-5 accent-emerald-600" />
-                فعال
-              </label>
-              <Button>ذخیره</Button>
-            </form>
-          </Card>
-          <Card className="bg-rose-50">
-            <h2 className="mb-3 text-xl font-black text-rose-950">حذف گروه</h2>
-            <p className="mb-4 text-sm text-rose-800">حذف گروه همه کاربران و خرج‌های همان گروه را حذف می‌کند.</p>
-            <form action={deleteGroupAction}>
-              <input type="hidden" name="id" value={group.id} />
-              <Button variant="danger" className="w-full">
-                <Trash2 className="size-4" />
-                حذف کامل گروه
-              </Button>
-            </form>
-          </Card>
-        </section>
-
         <section className="grid gap-5 lg:grid-cols-2">
           <Card>
             <div className="mb-4 flex items-center gap-2">
@@ -119,11 +93,11 @@ export default async function AdminGroupPage({ params }: { params: Promise<{ gro
                     ادمین
                   </label>
                   <Button variant="outline">ذخیره</Button>
-                  <Button form={`delete-person-${member.id}`} variant="danger" type="submit">حذف</Button>
+                  <Button form={`group-delete-person-${member.id}`} variant="danger" type="submit">حذف</Button>
                 </form>
               ))}
               {members.map((member) => (
-                <form key={`delete-${member.id}`} id={`delete-person-${member.id}`} action={deletePersonAction}>
+                <form key={`delete-${member.id}`} id={`group-delete-person-${member.id}`} action={deletePersonAction}>
                   <input type="hidden" name="id" value={member.id} />
                   <input type="hidden" name="groupSlug" value={group.slug} />
                 </form>
@@ -158,11 +132,11 @@ export default async function AdminGroupPage({ params }: { params: Promise<{ gro
                   <input type="hidden" name="isActive" value="on" />
                   <Input name="name" defaultValue={guest.name} />
                   <Button variant="outline">ذخیره</Button>
-                  <Button form={`delete-person-${guest.id}`} variant="danger" type="submit">حذف</Button>
+                  <Button form={`group-delete-person-${guest.id}`} variant="danger" type="submit">حذف</Button>
                 </form>
               ))}
               {guests.map((guest) => (
-                <form key={`delete-${guest.id}`} id={`delete-person-${guest.id}`} action={deletePersonAction}>
+                <form key={`delete-${guest.id}`} id={`group-delete-person-${guest.id}`} action={deletePersonAction}>
                   <input type="hidden" name="id" value={guest.id} />
                   <input type="hidden" name="groupSlug" value={group.slug} />
                 </form>
@@ -176,9 +150,9 @@ export default async function AdminGroupPage({ params }: { params: Promise<{ gro
           <div className="mb-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
             <div>
               <h2 className="text-xl font-black">خرج‌های گروه</h2>
-              <p className="mt-1 text-sm text-slate-600">ادمین همه خرج‌های این گروه را می‌بیند و می‌تواند مدیریت کند.</p>
+              <p className="mt-1 text-sm text-slate-600">اینجا خرج‌های همین گروه را مدیریت می‌کنی.</p>
             </div>
-            <Link className="inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 text-sm font-bold text-white" href={`/admin/groups/${group.slug}/expenses/new`}>
+            <Link className="inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 text-sm font-bold text-white" href={`/${group.slug}/admin/expenses/new`}>
               <PlusCircle className="size-4" />
               ایجاد خرج
             </Link>
@@ -195,13 +169,13 @@ export default async function AdminGroupPage({ params }: { params: Promise<{ gro
                   </div>
                   <span className="font-black">{formatToman(expense.amount)}</span>
                   <Badge tone={unpaid.length ? "amber" : "green"}>{unpaid.length ? `${unpaid.length} نفر باز` : "تسویه"}</Badge>
-                  <Link className="inline-flex h-10 items-center justify-center rounded-xl bg-amber-100 px-3 text-sm font-bold text-amber-950" href={`/admin/groups/${group.slug}/expenses/${expense.id}/edit`}>
+                  <Link className="inline-flex h-10 items-center justify-center rounded-xl bg-amber-100 px-3 text-sm font-bold text-amber-950" href={`/${group.slug}/admin/expenses/${expense.id}/edit`}>
                     <Pencil className="size-4" />
                     ویرایش
                   </Link>
                   <form action={deleteExpenseAction}>
                     <input type="hidden" name="adminMode" value="on" />
-                    <input type="hidden" name="managerScope" value="central" />
+                    <input type="hidden" name="managerScope" value="group" />
                     <input type="hidden" name="groupSlug" value={group.slug} />
                     <input type="hidden" name="id" value={expense.id} />
                     <Button variant="danger">حذف</Button>

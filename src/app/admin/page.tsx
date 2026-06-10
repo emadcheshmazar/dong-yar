@@ -41,11 +41,19 @@ export default async function AdminPage() {
         <Card>
           <div className="mb-4 flex items-center gap-2">
             <PlusCircle className="size-5 text-emerald-600" />
-            <h2 className="text-xl font-black">ساخت گروه</h2>
+            <h2 className="text-xl font-black">ساخت گروه و ادمین</h2>
           </div>
           <form action={upsertGroupAction} className="space-y-3">
             <Input name="name" placeholder="نام نمایشی، مثلا Marketing" required />
             <Input name="slug" dir="ltr" className="text-left" placeholder="marketing" required />
+            <div className="rounded-2xl bg-emerald-50 p-3">
+              <p className="mb-3 text-sm font-black text-emerald-900">ادمین همین گروه</p>
+              <div className="space-y-3">
+                <Input name="adminName" placeholder="نام ادمین گروه" required />
+                <Input name="adminUsername" dir="ltr" className="text-left" placeholder="admin username" required />
+                <Input name="adminPassword" type="password" dir="ltr" className="text-left" placeholder="admin password" required />
+              </div>
+            </div>
             <label className="flex items-center gap-2 text-sm font-bold">
               <input name="isActive" type="checkbox" defaultChecked className="size-5 accent-emerald-600" />
               فعال
@@ -64,6 +72,12 @@ export default async function AdminPage() {
                 <p className="mt-1 text-sm text-slate-500" dir="ltr">/{group.slug}</p>
                 <p className="mt-2 text-sm text-slate-600">
                   {group._count.people} نفر، {group._count.expenses} خرج
+                </p>
+                <p className="mt-1 text-sm text-slate-600">
+                  ادمین گروه:{" "}
+                  {group.people.length
+                    ? group.people.map((person) => person.username || person.name).join("، ")
+                    : "ثبت نشده"}
                 </p>
               </div>
               <Link className="inline-flex h-10 items-center justify-center rounded-xl bg-emerald-600 px-4 text-sm font-bold text-white" href={`/admin/groups/${group.slug}`}>

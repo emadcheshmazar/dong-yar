@@ -14,6 +14,12 @@ export const adminLoginSchema = z.object({
   password: z.string().min(1, "رمز ادمین را وارد کن."),
 });
 
+export const groupAdminLoginSchema = z.object({
+  groupSlug: z.string().trim().min(1, "گروه را انتخاب کن."),
+  username: z.string().trim().min(1, "نام کاربری ادمین را وارد کن."),
+  password: z.string().min(1, "رمز ادمین گروه را وارد کن."),
+});
+
 export const groupSchema = z.object({
   id: z.string().optional(),
   name: z.string().trim().min(2, "نام گروه کوتاه است."),
@@ -23,6 +29,9 @@ export const groupSchema = z.object({
     .min(2, "شناسه گروه کوتاه است.")
     .regex(/^[a-z0-9-]+$/, "شناسه گروه فقط حروف انگلیسی کوچک، عدد و خط تیره باشد."),
   isActive: z.coerce.boolean().optional(),
+  adminName: z.string().trim().optional(),
+  adminUsername: z.string().trim().optional(),
+  adminPassword: z.string().optional(),
 });
 
 export const personSchema = z.object({
@@ -31,6 +40,8 @@ export const personSchema = z.object({
   name: z.string().trim().min(2, "نام کوتاه است."),
   username: z.string().trim().optional(),
   type: z.enum(["MEMBER", "GUEST"]),
+  isGroupAdmin: z.coerce.boolean().optional(),
+  password: z.string().optional(),
   isActive: z.coerce.boolean().optional(),
 });
 

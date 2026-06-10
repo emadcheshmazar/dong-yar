@@ -1,0 +1,2 @@
+ALTER TABLE "Person" ADD COLUMN "passwordHash" TEXT;
+ALTER TABLE "Person" ADD COLUMN "isGroupAdmin" BOOLEAN NOT NULL DEFAULT false;

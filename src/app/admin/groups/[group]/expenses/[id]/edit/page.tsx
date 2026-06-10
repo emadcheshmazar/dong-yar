@@ -35,6 +35,7 @@ export default async function AdminEditExpensePage({
         <ExpenseForm groupSlug={group.slug} people={people} currentPersonId={expense.paidByPersonId} expense={expense} adminMode />
         <form id="delete-expense" action={deleteExpenseAction}>
           <input type="hidden" name="adminMode" value="on" />
+          <input type="hidden" name="managerScope" value="central" />
           <input type="hidden" name="groupSlug" value={group.slug} />
           <input type="hidden" name="id" value={expense.id} />
         </form>

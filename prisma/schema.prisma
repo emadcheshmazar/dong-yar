@@ -35,14 +35,16 @@ model Group {
 }
 
 model Person {
-  id        String     @id @default(cuid())
-  groupId   String
-  name      String
-  username  String?
-  type      PersonType @default(MEMBER)
-  isActive  Boolean    @default(true)
-  createdAt DateTime   @default(now())
-  updatedAt DateTime   @updatedAt
+  id           String     @id @default(cuid())
+  groupId      String
+  name         String
+  username     String?
+  passwordHash String?
+  type         PersonType @default(MEMBER)
+  isGroupAdmin Boolean    @default(false)
+  isActive     Boolean    @default(true)
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
 
   group           Group                @relation(fields: [groupId], references: [id])
   paidExpenses    Expense[]            @relation("PaidBy")

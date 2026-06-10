@@ -18,12 +18,14 @@ export function ExpenseForm({
   currentPersonId,
   expense,
   adminMode = false,
+  managerScope = "central",
 }: {
   groupSlug: string;
   people: PersonOption[];
   currentPersonId: string;
   expense?: ExpenseForEdit;
   adminMode?: boolean;
+  managerScope?: "central" | "group";
 }) {
   const [amount, setAmount] = useState(expense?.amount ?? 0);
   const [selected, setSelected] = useState<string[]>(expense?.participants.map((p) => p.personId) ?? [currentPersonId]);
@@ -54,6 +56,7 @@ export function ExpenseForm({
     <form action={action} className="grid gap-5 lg:grid-cols-[1fr_360px]">
       <input type="hidden" name="groupSlug" value={groupSlug} />
       {adminMode ? <input type="hidden" name="adminMode" value="on" /> : null}
+      {adminMode ? <input type="hidden" name="managerScope" value={managerScope} /> : null}
       {expense ? <input type="hidden" name="id" value={expense.id} /> : null}
       {localGuests.map((guest) => (
         <input key={guest.id} type="hidden" name="localGuests" value={`${guest.id}|||${guest.name}`} />

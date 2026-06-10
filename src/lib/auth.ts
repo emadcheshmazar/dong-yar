@@ -7,6 +7,7 @@ import { prisma } from "@/lib/db";
 
 const COOKIE_NAME = "daria_dong_session";
 const ADMIN_COOKIE_NAME = "daria_dong_admin";
+const GROUP_ADMIN_COOKIE_NAME = "daria_dong_group_admin";
 
 function getSecret() {
   return process.env.SESSION_SECRET || "dev-secret-change-me";
@@ -35,6 +36,11 @@ export async function verifyAdminPassword(password: string) {
   return password === (process.env.ADMIN_PASSWORD || process.env.APP_SHARED_PASSWORD || "dong123456");
 }
 
+export async function verifyPersonPassword(password: string, hash?: string | null) {
+  if (!hash) return false;
+  return bcrypt.compare(password, hash);
+}
+
 export async function createSession(personId: string) {
   const jar = await cookies();
   const payload = personId;
@@ -59,6 +65,18 @@ export async function createAdminSession() {
   });
 }
 
+export async function createGroupAdminSession(personId: string) {
+  const jar = await cookies();
+  const payload = personId;
+  jar.set(GROUP_ADMIN_COOKIE_NAME, `${payload}.${sign(payload)}`, {
+    httpOnly: true,
+    sameSite: "lax",
+    secure: process.env.NODE_ENV === "production",
+    path: "/",
+    maxAge: 60 * 60 * 12,
+  });
+}
+
 export async function destroySession() {
   const jar = await cookies();
   jar.delete(COOKIE_NAME);
@@ -67,6 +85,11 @@ export async function destroySession() {
 export async function destroyAdminSession() {
   const jar = await cookies();
   jar.delete(ADMIN_COOKIE_NAME);
+}
+
+export async function destroyGroupAdminSession() {
+  const jar = await cookies();
+  jar.delete(GROUP_ADMIN_COOKIE_NAME);
 }
 
 export async function getCurrentPerson(groupSlug?: string) {
@@ -91,6 +114,32 @@ export async function getCurrentPerson(groupSlug?: string) {
 export async function requirePerson(groupSlug: string) {
   const person = await getCurrentPerson(groupSlug);
   if (!person) redirect(`/${groupSlug}/login`);
+  return person;
+}
+
+export async function getCurrentGroupAdmin(groupSlug?: string) {
+  const jar = await cookies();
+  const raw = jar.get(GROUP_ADMIN_COOKIE_NAME)?.value;
+  if (!raw) return null;
+  const [personId, signature] = raw.split(".");
+  if (!personId || !signature || !verifySignedValue(personId, signature)) {
+    return null;
+  }
+  return prisma.person.findFirst({
+    where: {
+      id: personId,
+      type: PersonType.MEMBER,
+      isGroupAdmin: true,
+      isActive: true,
+      ...(groupSlug ? { group: { slug: groupSlug, isActive: true } } : {}),
+    },
+    include: { group: true },
+  });
+}
+
+export async function requireGroupAdmin(groupSlug: string) {
+  const person = await getCurrentGroupAdmin(groupSlug);
+  if (!person) redirect(`/${groupSlug}/admin/login`);
   return person;
 }
 

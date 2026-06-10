@@ -137,9 +137,9 @@ export async function upsertGroupAction(formData: FormData) {
     name: formData.get("name"),
     slug: normalizeSlug(String(formData.get("slug") ?? "")),
     isActive: formData.get("isActive") === "on",
-    adminName: formData.get("adminName"),
-    adminUsername: formData.get("adminUsername"),
-    adminPassword: formData.get("adminPassword"),
+    adminName: formData.get("adminName")?.toString() || undefined,
+    adminUsername: formData.get("adminUsername")?.toString() || undefined,
+    adminPassword: formData.get("adminPassword")?.toString() || undefined,
   });
   const data = {
     name: parsed.name,

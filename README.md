@@ -57,10 +57,16 @@ docker compose up --build
 APP_PORT=8080 docker compose up --build
 ```
 
-بعد از بالا آمدن سرویس‌ها، اگر خواستید دیتابیس را خالی کنید:
+بعد از بالا آمدن سرویس‌ها، اجرای seed دیتای mock نمی‌سازد و داده‌های موجود را نگه می‌دارد:
 
 ```bash
 docker compose exec app npm run seed
+```
+
+اگر عمدا خواستید دیتابیس را کامل خالی کنید:
+
+```bash
+docker compose exec app npm run db:clear
 ```
 
 پنل ادمین:
@@ -89,10 +95,16 @@ npm run migrate:dev
 npm run migrate:deploy
 ```
 
-خالی کردن داده‌ها بدون ساخت mock data:
+اجرای seed بدون ساخت mock data و بدون پاک کردن داده‌های موجود:
 
 ```bash
 npm run seed
+```
+
+خالی کردن عمدی همه داده‌ها:
+
+```bash
+npm run db:clear
 ```
 
 ## یادداشت استقرار داخلی
@@ -100,4 +112,5 @@ npm run seed
 - `SESSION_SECRET` و `ADMIN_PASSWORD` را در production حتما عوض کنید.
 - اگر از `APP_SHARED_PASSWORD_HASH` استفاده می‌کنید، `APP_SHARED_PASSWORD` را حذف کنید.
 - دیتابیس PostgreSQL باید قبل از اجرای app در دسترس باشد.
+- برای نگه داشتن دیتابیس Docker، از `docker compose down -v` استفاده نکنید؛ این دستور volume دیتابیس را حذف می‌کند.
 - حذف خرج به صورت نرم انجام می‌شود و status به `CANCELLED` تغییر می‌کند.

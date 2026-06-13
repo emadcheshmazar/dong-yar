@@ -69,16 +69,29 @@ export function isCustomSplit(splitMode: ExpenseSplitMode) {
   return splitMode === ExpenseSplitMode.CUSTOM;
 }
 
-export function countEnteredShares(participants: { shareAmount: number | null }[]) {
-  return participants.filter((participant) => participant.shareAmount != null).length;
+export function countEnteredShares(
+  participants: { shareAmount: number | null }[],
+) {
+  return participants.filter((participant) => participant.shareAmount != null)
+    .length;
 }
 
-export function isCustomExpenseComplete(participants: { shareAmount: number | null }[]) {
-  return participants.length > 0 && participants.every((participant) => participant.shareAmount != null);
+export function isCustomExpenseComplete(
+  participants: { shareAmount: number | null }[],
+) {
+  return (
+    participants.length > 0 &&
+    participants.every((participant) => participant.shareAmount != null)
+  );
 }
 
-export function sumParticipantShares(participants: { shareAmount: number | null }[]) {
-  return participants.reduce((sum, participant) => sum + (participant.shareAmount ?? 0), 0);
+export function sumParticipantShares(
+  participants: { shareAmount: number | null }[],
+) {
+  return participants.reduce(
+    (sum, participant) => sum + (participant.shareAmount ?? 0),
+    0,
+  );
 }
 
 export function formatExpenseAmount(expense: {
@@ -89,7 +102,8 @@ export function formatExpenseAmount(expense: {
   if (!isCustomSplit(expense.splitMode)) return formatToman(expense.amount);
   const entered = countEnteredShares(expense.participants);
   const total = expense.participants.length;
-  if (isCustomExpenseComplete(expense.participants)) return formatToman(expense.amount);
+  if (isCustomExpenseComplete(expense.participants))
+    return formatToman(expense.amount);
   return `${formatToman(expense.amount)} (${entered}/${total} سهم)`;
 }
 

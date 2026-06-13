@@ -83,14 +83,27 @@ export const personSchema = z.object({
   isActive: z.coerce.boolean().optional(),
 });
 
-export const expenseSchema = z.object({
-  id: z.string().optional(),
-  title: z.string().trim().min(2, "عنوان خرج را بنویس."),
-  amount: z.coerce.number().int().positive("مبلغ باید عدد مثبت باشد."),
-  paidByPersonId: z.string().min(1, "پرداخت‌کننده را انتخاب کن."),
-  cardNumber: z.string().trim().optional(),
-  paymentNote: z.string().trim().optional(),
-  date: z.string().min(1, "تاریخ را انتخاب کن."),
-  description: z.string().trim().optional(),
-  participantIds: z.array(z.string()).min(1, "حداقل یک نفر را انتخاب کن."),
+export const expenseSchema = z
+  .object({
+    id: z.string().optional(),
+    title: z.string().trim().min(2, "عنوان خرج را بنویس."),
+    splitMode: z.enum(["EQUAL", "CUSTOM"]).default("EQUAL"),
+    amount: z.coerce.number().int().nonnegative().optional(),
+    paidByPersonId: z.string().min(1, "پرداخت‌کننده را انتخاب کن."),
+    cardNumber: z.string().trim().optional(),
+    paymentNote: z.string().trim().optional(),
+    date: z.string().min(1, "تاریخ را انتخاب کن."),
+    description: z.string().trim().optional(),
+    participantIds: z.array(z.string()).min(1, "حداقل یک نفر را انتخاب کن."),
+  })
+  .superRefine((data, ctx) => {
+    if (data.splitMode === "EQUAL" && (!data.amount || data.amount <= 0)) {
+      ctx.addIssue({ code: "custom", message: "مبلغ باید عدد مثبت باشد.", path: ["amount"] });
+    }
+  });
+
+export const participantShareSchema = z.object({
+  expenseId: z.string().min(1, "خرج مشخص نیست."),
+  participantId: z.string().min(1, "شرکت‌کننده مشخص نیست."),
+  shareAmount: z.coerce.number().int().nonnegative("سهم نمی‌تواند منفی باشد."),
 });

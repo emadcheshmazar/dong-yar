@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { createHash, randomBytes, randomInt } from "node:crypto";
 import {
   EmailVerificationPurpose,
+  ExpenseSplitMode,
   ExpenseStatus,
   MembershipRequestStatus,
   PaymentStatus,
@@ -30,7 +31,7 @@ import {
 import { prisma } from "@/lib/db";
 import { sendVerificationEmail } from "@/lib/email";
 import { setFlashToast } from "@/lib/flash-toast";
-import { calculatePayerShare, calculateShare, parseInputDate } from "@/lib/utils";
+import { calculatePayerShare, calculateShare, parseInputDate, sumParticipantShares } from "@/lib/utils";
 import {
   accountGroupSchema,
   adminLoginSchema,
@@ -42,6 +43,7 @@ import {
   loginSchema,
   membershipRequestSchema,
   membershipReviewSchema,
+  participantShareSchema,
   personSchema,
   userLoginSchema,
   userSignupSchema,
@@ -869,6 +871,7 @@ async function saveExpense(formData: FormData, mode: "create" | "edit") {
   const raw = {
     id: formData.get("id")?.toString(),
     title: formData.get("title"),
+    splitMode: formData.get("splitMode")?.toString() ?? "EQUAL",
     amount: formData.get("amount"),
     paidByPersonId: formData.get("paidByPersonId"),
     cardNumber: formData.get("cardNumber")?.toString(),
@@ -940,17 +943,54 @@ async function saveExpense(formData: FormData, mode: "create" | "edit") {
     return;
   }
 
-  const debtShare = calculateShare(parsed.amount, participantIds.length);
-  const participantRows = participantIds.map((personId) => ({
-    personId,
-    shareAmount:
-      personId === parsed.paidByPersonId
-        ? calculatePayerShare(parsed.amount, participantIds.length)
-        : debtShare,
-    paymentStatus: personId === parsed.paidByPersonId ? PaymentStatus.PAID : PaymentStatus.UNPAID,
-    paidAt: personId === parsed.paidByPersonId ? new Date() : null,
-    markedByPersonId: null,
-  }));
+  const debtShare = calculateShare(parsed.amount ?? 0, participantIds.length);
+  const isCustom = parsed.splitMode === ExpenseSplitMode.CUSTOM;
+  const participantRows = isCustom
+    ? participantIds.map((personId) => ({
+        personId,
+        shareAmount: null,
+        shareEnteredAt: null,
+        paymentStatus: personId === parsed.paidByPersonId ? PaymentStatus.PAID : PaymentStatus.UNPAID,
+        paidAt: personId === parsed.paidByPersonId ? new Date() : null,
+        markedByPersonId: null,
+      }))
+    : participantIds.map((personId) => ({
+        personId,
+        shareAmount:
+          personId === parsed.paidByPersonId
+            ? calculatePayerShare(parsed.amount!, participantIds.length)
+            : debtShare,
+        shareEnteredAt: new Date(),
+        paymentStatus: personId === parsed.paidByPersonId ? PaymentStatus.PAID : PaymentStatus.UNPAID,
+        paidAt: personId === parsed.paidByPersonId ? new Date() : null,
+        markedByPersonId: null,
+      }));
+
+  if (mode === "edit" && existing?.splitMode === ExpenseSplitMode.CUSTOM) {
+    try {
+      await prisma.expense.update({
+        where: { id: existing.id },
+        data: {
+          title: parsed.title,
+          paidByPersonId: parsed.paidByPersonId,
+          cardNumber: parsed.cardNumber || null,
+          paymentNote: parsed.paymentNote || null,
+          date: parseInputDate(parsed.date),
+          description: parsed.description || null,
+        },
+      });
+    } catch {
+      await setFlashToast("error", `ویرایش خرج ${parsed.title} انجام نشد.`);
+      revalidatePath(`/${group.slug}/expenses/${existing.id}`);
+      revalidateGroupAdminPages(group.slug);
+      return;
+    }
+    await setFlashToast("success", `خرج ${parsed.title} ویرایش شد.`);
+    revalidatePath(`/${group.slug}/expenses/${existing.id}`);
+    revalidatePath(`/admin/groups/${group.slug}`);
+    revalidatePath(`/${group.slug}/admin`);
+    redirect(isAdminMode ? managerPath(group.slug, managerScope) : `/${group.slug}/expenses/${existing.id}`);
+  }
 
   if (mode === "edit") {
     try {
@@ -960,7 +1000,8 @@ async function saveExpense(formData: FormData, mode: "create" | "edit") {
           where: { id: existing!.id },
           data: {
             title: parsed.title,
-            amount: parsed.amount,
+            amount: parsed.amount!,
+            splitMode: ExpenseSplitMode.EQUAL,
             paidByPersonId: parsed.paidByPersonId,
             cardNumber: parsed.cardNumber || null,
             paymentNote: parsed.paymentNote || null,
@@ -989,7 +1030,8 @@ async function saveExpense(formData: FormData, mode: "create" | "edit") {
       data: {
         groupId: group.id,
         title: parsed.title,
-        amount: parsed.amount,
+        amount: isCustom ? 0 : parsed.amount!,
+        splitMode: parsed.splitMode,
         paidByPersonId: parsed.paidByPersonId,
         createdByPersonId: isAdminMode ? parsed.paidByPersonId : current!.id,
         cardNumber: parsed.cardNumber || null,
@@ -1005,7 +1047,7 @@ async function saveExpense(formData: FormData, mode: "create" | "edit") {
     revalidateGroupAdminPages(group.slug);
     return;
   }
-  await setFlashToast("success", `خرج ${expense.title} ثبت شد.`);
+  await setFlashToast("success", isCustom ? `خرج سفارشی ${expense.title} ثبت شد. سهم‌ها را وارد کنید.` : `خرج ${expense.title} ثبت شد.`);
   revalidatePath(`/${group.slug}/expenses`);
   revalidatePath(`/admin/groups/${group.slug}`);
   revalidatePath(`/${group.slug}/admin`);
@@ -1061,6 +1103,81 @@ export async function deleteExpenseAction(formData: FormData) {
   redirect(isAdminMode ? managerPath(group.slug, managerScope) : `/${group.slug}/expenses`);
 }
 
+export async function updateParticipantShareAction(formData: FormData) {
+  const groupSlug = normalizeSlug(String(formData.get("groupSlug") ?? ""));
+  const current = await requirePerson(groupSlug);
+  const parsed = participantShareSchema.safeParse({
+    expenseId: formData.get("expenseId"),
+    participantId: formData.get("participantId"),
+    shareAmount: formData.get("shareAmount"),
+  });
+  if (!parsed.success) {
+    await setFlashToast("error", validationMessage("سهم وارد شده درست نیست.", parsed.error));
+    revalidatePath(`/${groupSlug}/expenses`);
+    return;
+  }
+
+  const expense = await prisma.expense.findFirst({
+    where: {
+      id: parsed.data.expenseId,
+      groupId: current.groupId,
+      status: ExpenseStatus.ACTIVE,
+      splitMode: ExpenseSplitMode.CUSTOM,
+    },
+    include: {
+      participants: {
+        include: { person: { select: { type: true } } },
+      },
+    },
+  });
+  if (!expense) {
+    await setFlashToast("error", "این خرج سفارشی پیدا نشد.");
+    revalidatePath(`/${groupSlug}/expenses`);
+    return;
+  }
+
+  const participant = expense.participants.find((item) => item.id === parsed.data.participantId);
+  if (!participant) {
+    await setFlashToast("error", "شرکت‌کننده پیدا نشد.");
+    revalidatePath(`/${groupSlug}/expenses/${expense.id}`);
+    return;
+  }
+
+  const isGuest = participant.person.type === PersonType.GUEST;
+  const isOwnMember = participant.personId === current.id && !isGuest;
+  const canEdit = current.isGroupAdmin || isOwnMember;
+  if (!canEdit) {
+    await setFlashToast("error", isGuest ? "سهم مهمان فقط توسط ادمین گروه ثبت می‌شود." : "فقط ادمین گروه یا خود فرد می‌تواند سهم را ثبت کند.");
+    revalidatePath(`/${groupSlug}/expenses/${expense.id}`);
+    return;
+  }
+
+  try {
+    await prisma.$transaction(async (tx) => {
+      await tx.expenseParticipant.update({
+        where: { id: participant.id },
+        data: {
+          shareAmount: parsed.data.shareAmount,
+          shareEnteredAt: new Date(),
+        },
+      });
+      const participants = await tx.expenseParticipant.findMany({ where: { expenseId: expense.id } });
+      await tx.expense.update({
+        where: { id: expense.id },
+        data: { amount: sumParticipantShares(participants) },
+      });
+    });
+  } catch {
+    await setFlashToast("error", "ثبت سهم انجام نشد.");
+    revalidatePath(`/${groupSlug}/expenses/${expense.id}`);
+    return;
+  }
+
+  await setFlashToast("success", "سهم ثبت شد.");
+  revalidatePath(`/${groupSlug}/expenses/${expense.id}`);
+  revalidatePath(`/${groupSlug}/dashboard`);
+}
+
 export async function markPaidAction(formData: FormData) {
   const groupSlug = normalizeSlug(String(formData.get("groupSlug") ?? ""));
   const current = await requirePerson(groupSlug);
@@ -1073,7 +1190,7 @@ export async function markPaidAction(formData: FormData) {
     },
     include: { expense: true },
   });
-  if (!participant || participant.expense.paidByPersonId === current.id) {
+  if (!participant || participant.expense.paidByPersonId === current.id || participant.shareAmount == null) {
     await setFlashToast("error", "امکان ثبت پرداخت برای این دنگ وجود ندارد.");
     revalidatePath(`/${groupSlug}/expenses/${expenseId}`);
     return;

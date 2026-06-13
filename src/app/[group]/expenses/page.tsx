@@ -6,7 +6,7 @@ import { Badge } from "@/components/badge";
 import { Card } from "@/components/ui/card";
 import { requirePerson } from "@/lib/auth";
 import { getExpenses, getPeople } from "@/lib/queries";
-import { formatDate, formatToman, parseInputDate } from "@/lib/utils";
+import { countEnteredShares, formatDate, formatExpenseAmount, formatToman, isCustomSplit, parseInputDate, splitModeLabels } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
 
@@ -62,6 +62,7 @@ export default async function ExpensesPage({
       <div className="space-y-3">
         {filtered.map((expense) => {
           const unpaid = expense.participants.filter((p) => p.personId !== expense.paidByPersonId && p.paymentStatus === "UNPAID");
+          const isCustom = isCustomSplit(expense.splitMode);
           const debtShare =
             expense.participants.find((participant) => participant.personId !== expense.paidByPersonId)?.shareAmount ??
             expense.participants[0]?.shareAmount ??
@@ -70,7 +71,10 @@ export default async function ExpensesPage({
             <Card key={expense.id} className="p-4">
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0 flex-1">
-                  <p className="font-black">{expense.title}</p>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <p className="font-black">{expense.title}</p>
+                    {isCustomSplit(expense.splitMode) ? <Badge tone="sky">{splitModeLabels[expense.splitMode]}</Badge> : null}
+                  </div>
                   <p className="mt-1 text-sm text-slate-500">
                     {formatDate(expense.date)} · پرداخت‌کننده: {expense.paidBy.name}
                   </p>
@@ -85,15 +89,15 @@ export default async function ExpensesPage({
               <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2 text-sm sm:grid-cols-4">
                 <div>
                   <dt className="text-slate-500">مبلغ</dt>
-                  <dd className="font-black">{formatToman(expense.amount)}</dd>
+                  <dd className="font-black">{formatExpenseAmount(expense)}</dd>
                 </div>
                 <div>
                   <dt className="text-slate-500">نفرات</dt>
                   <dd>{expense.participants.length} نفر</dd>
                 </div>
                 <div>
-                  <dt className="text-slate-500">سهم</dt>
-                  <dd>{formatToman(debtShare)}</dd>
+                  <dt className="text-slate-500">{isCustom ? "سهم‌ها" : "سهم"}</dt>
+                  <dd>{isCustom ? `${countEnteredShares(expense.participants)}/${expense.participants.length}` : formatToman(debtShare ?? 0)}</dd>
                 </div>
                 <div>
                   <dt className="text-slate-500">وضعیت</dt>

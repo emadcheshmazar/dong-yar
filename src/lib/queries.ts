@@ -1,4 +1,4 @@
-import { ExpenseStatus, PaymentStatus, PersonType } from "@prisma/client";
+import { ExpenseSplitMode, ExpenseStatus, PaymentStatus, PersonType } from "@prisma/client";
 import { prisma } from "@/lib/db";
 
 const personPublicSelect = {
@@ -71,7 +71,7 @@ export async function getExpense(groupId: string, id: string) {
   });
 }
 
-export async function getDashboard(groupId: string, personId: string) {
+export async function getDashboard(groupId: string, personId: string, isGroupAdmin = false) {
   const expenses = await getExpenses(groupId);
   const myDebts = expenses
     .map((expense) => ({
@@ -81,9 +81,26 @@ export async function getDashboard(groupId: string, personId: string) {
     .filter(
       (item) =>
         item.participant &&
+        item.participant.shareAmount != null &&
         item.expense.paidByPersonId !== personId &&
         item.participant.paymentStatus === PaymentStatus.UNPAID,
     );
+  const pendingCustomShares = expenses.filter(
+    (expense) =>
+      expense.splitMode === ExpenseSplitMode.CUSTOM &&
+      expense.participants.some(
+        (participant) => participant.personId === personId && participant.shareAmount == null,
+      ),
+  );
+  const pendingGuestShares = isGroupAdmin
+    ? expenses.filter(
+        (expense) =>
+          expense.splitMode === ExpenseSplitMode.CUSTOM &&
+          expense.participants.some(
+            (participant) => participant.person.type === PersonType.GUEST && participant.shareAmount == null,
+          ),
+      )
+    : [];
   const paidByMe = expenses.filter((e) => e.paidByPersonId === personId);
   const spentByMe = paidByMe.reduce((sum, e) => sum + e.amount, 0);
   const debt = myDebts.reduce((sum, item) => sum + (item.participant?.shareAmount ?? 0), 0);
@@ -91,14 +108,21 @@ export async function getDashboard(groupId: string, personId: string) {
     return (
       sum +
       expense.participants
-        .filter((p) => p.personId !== personId && p.paymentStatus === PaymentStatus.UNPAID)
-        .reduce((inner, p) => inner + p.shareAmount, 0)
+        .filter(
+          (p) =>
+            p.personId !== personId &&
+            p.shareAmount != null &&
+            p.paymentStatus === PaymentStatus.UNPAID,
+        )
+        .reduce((inner, p) => inner + (p.shareAmount ?? 0), 0)
     );
   }, 0);
 
   return {
     expenses,
     myDebts,
+    pendingCustomShares,
+    pendingGuestShares,
     paidByMe,
     spentByMe,
     debt,

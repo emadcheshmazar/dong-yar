@@ -1,6 +1,11 @@
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
-import { gregorianToJalaliParts, jalaliPartsToGregorianISO, parseInputDate } from "@/lib/jalali";
+import { ExpenseSplitMode } from "@prisma/client";
+import {
+  gregorianToJalaliParts,
+  jalaliPartsToGregorianISO,
+  parseInputDate,
+} from "@/lib/jalali";
 
 export { parseInputDate };
 
@@ -59,3 +64,36 @@ export function calculateReceivable(amount: number, participantsCount: number) {
   if (participantsCount <= 1) return 0;
   return calculateShare(amount, participantsCount) * (participantsCount - 1);
 }
+
+export function isCustomSplit(splitMode: ExpenseSplitMode) {
+  return splitMode === ExpenseSplitMode.CUSTOM;
+}
+
+export function countEnteredShares(participants: { shareAmount: number | null }[]) {
+  return participants.filter((participant) => participant.shareAmount != null).length;
+}
+
+export function isCustomExpenseComplete(participants: { shareAmount: number | null }[]) {
+  return participants.length > 0 && participants.every((participant) => participant.shareAmount != null);
+}
+
+export function sumParticipantShares(participants: { shareAmount: number | null }[]) {
+  return participants.reduce((sum, participant) => sum + (participant.shareAmount ?? 0), 0);
+}
+
+export function formatExpenseAmount(expense: {
+  splitMode: ExpenseSplitMode;
+  amount: number;
+  participants: { shareAmount: number | null }[];
+}) {
+  if (!isCustomSplit(expense.splitMode)) return formatToman(expense.amount);
+  const entered = countEnteredShares(expense.participants);
+  const total = expense.participants.length;
+  if (isCustomExpenseComplete(expense.participants)) return formatToman(expense.amount);
+  return `${formatToman(expense.amount)} (${entered}/${total} سهم)`;
+}
+
+export const splitModeLabels: Record<ExpenseSplitMode, string> = {
+  [ExpenseSplitMode.EQUAL]: "مساوی",
+  [ExpenseSplitMode.CUSTOM]: "سفارشی",
+};

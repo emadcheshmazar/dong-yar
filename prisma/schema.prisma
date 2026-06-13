@@ -18,6 +18,11 @@ enum ExpenseStatus {
   CANCELLED
 }
 
+enum ExpenseSplitMode {
+  EQUAL
+  CUSTOM
+}
+
 enum PaymentStatus {
   PAID
   UNPAID
@@ -131,8 +136,9 @@ model Expense {
   paymentNote       String?
   date              DateTime
   description       String?
-  status            ExpenseStatus @default(ACTIVE)
-  createdAt         DateTime      @default(now())
+  status            ExpenseStatus     @default(ACTIVE)
+  splitMode         ExpenseSplitMode  @default(EQUAL)
+  createdAt         DateTime          @default(now())
   updatedAt         DateTime      @updatedAt
 
   group        Group                @relation(fields: [groupId], references: [id])
@@ -145,7 +151,8 @@ model ExpenseParticipant {
   id               String        @id @default(cuid())
   expenseId        String
   personId         String
-  shareAmount      Int
+  shareAmount      Int?
+  shareEnteredAt   DateTime?
   paymentStatus    PaymentStatus @default(UNPAID)
   paidAt           DateTime?
   markedByPersonId String?

@@ -13,7 +13,7 @@ export default async function NewExpensePage({ params }: { params: Promise<{ gro
     <AppShell groupSlug={person.group.slug}>
       <div className="mb-6">
         <h1 className="text-3xl font-black">ثبت خرج جدید</h1>
-        <p className="mt-1 text-sm text-slate-600">عنوان، مبلغ و آدم‌ها را بده؛ سهم هر نفر زنده حساب می‌شود.</p>
+        <p className="mt-1 text-sm text-slate-600">خرج مساوی یا سفارشی بساز؛ در حالت سفارشی هر نفر سهم خودش را وارد می‌کند.</p>
       </div>
       <ExpenseForm groupSlug={person.group.slug} people={people} currentPersonId={person.id} />
     </AppShell>

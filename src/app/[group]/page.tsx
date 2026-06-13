@@ -9,5 +9,5 @@ export default async function GroupHomePage({ params }: { params: Promise<{ grou
   const group = await getGroupBySlug(groupSlug);
   if (!group) notFound();
   const person = await getCurrentPerson(group.slug);
-  redirect(person ? `/${group.slug}/dashboard` : `/${group.slug}/login`);
+  redirect(person ? `/${group.slug}/dashboard` : "/login");
 }

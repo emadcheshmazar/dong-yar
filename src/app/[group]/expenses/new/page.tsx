@@ -1,14 +1,14 @@
 import { AppShell } from "@/components/nav";
 import { ExpenseForm } from "@/components/expense-form";
 import { requirePerson } from "@/lib/auth";
-import { getActivePeople } from "@/lib/queries";
+import { getActiveMembers } from "@/lib/queries";
 
 export const dynamic = "force-dynamic";
 
 export default async function NewExpensePage({ params }: { params: Promise<{ group: string }> }) {
   const { group } = await params;
   const person = await requirePerson(group);
-  const people = await getActivePeople(person.groupId);
+  const people = await getActiveMembers(person.groupId);
   return (
     <AppShell groupSlug={person.group.slug}>
       <div className="mb-6">

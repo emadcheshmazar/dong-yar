@@ -20,6 +20,44 @@ export const groupAdminLoginSchema = z.object({
   password: z.string().min(1, "رمز ادمین گروه را وارد کن."),
 });
 
+export const emailVerificationRequestSchema = z.object({
+  email: z.string().trim().toLowerCase().email("ایمیل معتبر وارد کن."),
+  purpose: z.enum(["USER_SIGNUP", "GROUP_SIGNUP"]),
+});
+
+export const userLoginSchema = z.object({
+  email: z.string().trim().toLowerCase().email("ایمیل معتبر وارد کن."),
+  password: z.string().min(1, "رمز ورود را وارد کن."),
+});
+
+export const userSignupSchema = z.object({
+  name: z.string().trim().min(2, "نام کوتاه است."),
+  email: z.string().trim().toLowerCase().email("ایمیل معتبر وارد کن."),
+  password: z.string().min(6, "رمز ورود حداقل ۶ کاراکتر باشد."),
+  code: z.string().trim().regex(/^\d{6}$/, "کد تایید ۶ رقمی را وارد کن."),
+  joinCode: z.string().trim().optional(),
+});
+
+export const accountGroupSchema = z.object({
+  name: z.string().trim().min(2, "نام گروه کوتاه است."),
+  slug: z
+    .string()
+    .trim()
+    .toLowerCase()
+    .min(2, "شناسه گروه کوتاه است.")
+    .regex(/^[a-z0-9-]+$/, "شناسه گروه فقط حروف انگلیسی کوچک، عدد و خط تیره باشد."),
+});
+
+export const membershipRequestSchema = z.object({
+  groupIdentifier: z.string().trim().min(2, "کد دعوت، شناسه یا نام گروه را وارد کن."),
+});
+
+export const membershipReviewSchema = z.object({
+  requestId: z.string().min(1, "درخواست مشخص نیست."),
+  groupSlug: z.string().trim().min(1, "گروه مشخص نیست."),
+  decision: z.enum(["approve", "reject"]),
+});
+
 export const groupSchema = z.object({
   id: z.string().optional(),
   name: z.string().trim().min(2, "نام گروه کوتاه است."),

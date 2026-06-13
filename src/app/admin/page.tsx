@@ -1,14 +1,12 @@
 import Link from "next/link";
-import { redirect } from "next/navigation";
 import { LogOut, PlusCircle } from "lucide-react";
-import { deleteGroupAction, upsertGroupAction } from "@/app/actions";
+import { deleteGroupAction, logoutAllAction, upsertGroupAction } from "@/app/actions";
 import { Badge } from "@/components/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { PasswordInput } from "@/components/ui/password-input";
-import { destroyAdminSession, requireAdmin } from "@/lib/auth";
-import { setFlashToast } from "@/lib/flash-toast";
+import { requireAdmin } from "@/lib/auth";
 import { getAdminGroups } from "@/lib/queries";
 
 export const dynamic = "force-dynamic";
@@ -19,15 +17,13 @@ export default async function AdminPage() {
 
   async function logout() {
     "use server";
-    await destroyAdminSession();
-    await setFlashToast("success", "از پنل ادمین خارج شدی.");
-    redirect("/admin/login");
+    await logoutAllAction();
   }
 
   return (
     <main className="min-h-screen bg-[#f8faf2] text-slate-900">
       <header className="border-b border-slate-200 bg-white/90">
-        <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-4">
+        <div className="mx-auto flex max-w-6xl flex-col gap-3 px-4 py-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <h1 className="text-2xl font-black">پنل ادمین داریا دنگ</h1>
             <p className="text-sm text-slate-600">لیست گروه‌ها فقط اینجا قابل مشاهده است.</p>
@@ -41,7 +37,7 @@ export default async function AdminPage() {
         </div>
       </header>
       <div className="mx-auto grid max-w-6xl gap-5 px-4 py-6 lg:grid-cols-[360px_1fr]">
-        <Card>
+        <Card className="h-fit lg:sticky lg:top-24">
           <div className="mb-4 flex items-center gap-2">
             <PlusCircle className="size-5 text-emerald-600" />
             <h2 className="text-xl font-black">ساخت گروه و ادمین</h2>
@@ -66,10 +62,10 @@ export default async function AdminPage() {
         </Card>
         <div className="space-y-3">
           {groups.map((group) => (
-            <Card key={group.id} className="grid gap-4 md:grid-cols-[1fr_auto_auto] md:items-center">
+            <Card key={group.id} className="grid gap-4 p-4 sm:grid-cols-[1fr_auto] sm:items-center lg:grid-cols-[1fr_auto_auto]">
               <div>
                 <div className="flex flex-wrap items-center gap-2">
-                  <h2 className="text-xl font-black">{group.name}</h2>
+                  <h2 className="text-lg font-black sm:text-xl">{group.name}</h2>
                   <Badge tone={group.isActive ? "green" : "slate"}>{group.isActive ? "فعال" : "غیرفعال"}</Badge>
                 </div>
                 <p className="mt-1 text-sm text-slate-500" dir="ltr">/{group.slug}</p>
@@ -83,13 +79,15 @@ export default async function AdminPage() {
                     : "ثبت نشده"}
                 </p>
               </div>
-              <Link className="inline-flex h-10 items-center justify-center rounded-xl bg-emerald-600 px-4 text-sm font-bold text-white" href={`/admin/groups/${group.slug}`}>
-                مدیریت
-              </Link>
-              <form action={deleteGroupAction}>
-                <input type="hidden" name="id" value={group.id} />
-                <Button variant="danger">حذف</Button>
-              </form>
+              <div className="flex flex-wrap gap-2 sm:justify-end">
+                <Link className="inline-flex h-10 flex-1 items-center justify-center rounded-xl bg-emerald-600 px-4 text-sm font-bold text-white sm:flex-none" href={`/admin/groups/${group.slug}`}>
+                  مدیریت
+                </Link>
+                <form action={deleteGroupAction} className="flex-1 sm:flex-none">
+                  <input type="hidden" name="id" value={group.id} />
+                  <Button variant="danger" className="w-full sm:w-auto">حذف</Button>
+                </form>
+              </div>
             </Card>
           ))}
           {!groups.length ? (

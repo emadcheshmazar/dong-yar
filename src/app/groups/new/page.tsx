@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
 
-export default async function GroupAdminLoginPage() {
+export default function NewGroupPage() {
   redirect("/account");
 }

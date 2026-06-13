@@ -3,15 +3,15 @@ import { ArrowRight } from "lucide-react";
 import { ExpenseForm } from "@/components/expense-form";
 import { Card } from "@/components/ui/card";
 import { requireGroupAdmin } from "@/lib/auth";
-import { getActivePeople } from "@/lib/queries";
+import { getActiveMembers } from "@/lib/queries";
 
 export const dynamic = "force-dynamic";
 
 export default async function GroupAdminNewExpensePage({ params }: { params: Promise<{ group: string }> }) {
   const { group } = await params;
   const admin = await requireGroupAdmin(group);
-  const people = await getActivePeople(admin.groupId);
-  const firstMember = people.find((person) => person.type === "MEMBER");
+  const people = await getActiveMembers(admin.groupId);
+  const firstMember = people[0];
 
   return (
     <main className="min-h-screen bg-[#f8faf2] px-4 py-6 text-slate-900">

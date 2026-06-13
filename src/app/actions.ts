@@ -2,45 +2,159 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { ExpenseStatus, PaymentStatus, PersonType } from "@prisma/client";
+import { createHash, randomBytes, randomInt } from "node:crypto";
+import {
+  EmailVerificationPurpose,
+  ExpenseStatus,
+  MembershipRequestStatus,
+  PaymentStatus,
+  PersonType,
+} from "@prisma/client";
 import bcrypt from "bcryptjs";
 import {
   createAdminSession,
   createGroupAdminSession,
   createSession,
+  createUserSession,
   getCurrentAdmin,
+  requireUser,
   requireAdmin,
   requireGroupAdmin,
   requirePerson,
   verifyAdminPassword,
   verifyPersonPassword,
   verifySharedPassword,
+  verifyUserPassword,
+  destroyAllSessions,
 } from "@/lib/auth";
 import { prisma } from "@/lib/db";
+import { sendVerificationEmail } from "@/lib/email";
 import { setFlashToast } from "@/lib/flash-toast";
-import { calculateShare } from "@/lib/utils";
+import { calculatePayerShare, calculateShare, parseInputDate } from "@/lib/utils";
 import {
+  accountGroupSchema,
   adminLoginSchema,
+  emailVerificationRequestSchema,
   expenseSchema,
   groupAdminLoginSchema,
   groupLookupSchema,
   groupSchema,
   loginSchema,
+  membershipRequestSchema,
+  membershipReviewSchema,
   personSchema,
+  userLoginSchema,
+  userSignupSchema,
 } from "@/lib/validations";
 
 function normalizeSlug(value: string) {
   return value.trim().toLowerCase();
 }
 
+function normalizeEmail(value: string) {
+  return value.trim().toLowerCase();
+}
+
+function normalizeJoinCode(value: string) {
+  return value.trim().toUpperCase().replace(/\s+/g, "");
+}
+
+function generateEmailCode() {
+  return randomInt(100000, 1000000).toString();
+}
+
+function hashVerificationCode(email: string, purpose: EmailVerificationPurpose, code: string) {
+  const secret = process.env.SESSION_SECRET || "dev-secret-change-me";
+  return createHash("sha256").update(`${normalizeEmail(email)}:${purpose}:${code}:${secret}`).digest("hex");
+}
+
+function generateJoinCode() {
+  return randomBytes(5).toString("hex").toUpperCase();
+}
+
+async function generateUniqueJoinCode() {
+  for (let attempt = 0; attempt < 8; attempt += 1) {
+    const joinCode = generateJoinCode();
+    const existing = await prisma.group.findUnique({ where: { joinCode }, select: { id: true } });
+    if (!existing) return joinCode;
+  }
+  return `${generateJoinCode()}${randomInt(10, 99)}`;
+}
+
+function baseUsername(name: string, email: string) {
+  const emailPrefix = email.split("@")[0]?.replace(/[^a-zA-Z0-9_-]/g, "-") || "user";
+  const normalizedName = name.trim().replace(/\s+/g, "-").replace(/[^\p{L}\p{N}_-]/gu, "");
+  return (normalizedName || emailPrefix).slice(0, 32);
+}
+
+async function generateUniqueUsername(groupId: string, name: string, email: string) {
+  const base = baseUsername(name, email);
+  for (let attempt = 0; attempt < 8; attempt += 1) {
+    const username = attempt === 0 ? base : `${base}-${randomInt(10, 999)}`;
+    const existing = await prisma.person.findFirst({ where: { groupId, username }, select: { id: true } });
+    if (!existing) return username;
+  }
+  return `${base}-${randomBytes(2).toString("hex")}`;
+}
+
 function formStringArray(formData: FormData, key: string) {
   return formData.getAll(key).map(String).filter(Boolean);
+}
+
+async function verifyEmailCode(email: string, purpose: EmailVerificationPurpose, code: string) {
+  const normalizedEmail = normalizeEmail(email);
+  const verification = await prisma.emailVerificationCode.findFirst({
+    where: {
+      email: normalizedEmail,
+      purpose,
+      consumedAt: null,
+    },
+    orderBy: { createdAt: "desc" },
+  });
+  if (!verification || verification.expiresAt < new Date()) {
+    return { ok: false as const, message: "کد تایید منقضی شده یا پیدا نشد." };
+  }
+  if (verification.attempts >= 5) {
+    return { ok: false as const, message: "تعداد تلاش برای این کد تمام شده. دوباره کد بگیر." };
+  }
+  const expected = hashVerificationCode(normalizedEmail, purpose, code);
+  if (verification.codeHash !== expected) {
+    await prisma.emailVerificationCode.update({
+      where: { id: verification.id },
+      data: { attempts: { increment: 1 } },
+    });
+    return { ok: false as const, message: "کد تایید درست نیست." };
+  }
+  return { ok: true as const, verification };
 }
 
 async function getGroupForSlug(slug: string, includeInactive = false) {
   return prisma.group.findFirst({
     where: {
       slug: normalizeSlug(slug),
+      ...(includeInactive ? {} : { isActive: true }),
+    },
+  });
+}
+
+async function resolveGroupByIdentifier(identifier: string, includeInactive = false) {
+  const trimmed = identifier.trim();
+  if (!trimmed) return null;
+
+  const byJoinCode = await prisma.group.findFirst({
+    where: {
+      joinCode: normalizeJoinCode(trimmed),
+      ...(includeInactive ? {} : { isActive: true }),
+    },
+  });
+  if (byJoinCode) return byJoinCode;
+
+  const bySlug = await getGroupForSlug(trimmed, includeInactive);
+  if (bySlug) return bySlug;
+
+  return prisma.group.findFirst({
+    where: {
+      name: { equals: trimmed, mode: "insensitive" },
       ...(includeInactive ? {} : { isActive: true }),
     },
   });
@@ -75,6 +189,286 @@ function revalidateGroupAdminPages(groupSlug: string) {
   revalidatePath(`/${groupSlug}/admin`);
 }
 
+export async function sendEmailCodeAction(_: unknown, formData: FormData) {
+  const parsed = emailVerificationRequestSchema.safeParse({
+    email: formData.get("email"),
+    purpose: formData.get("purpose"),
+  });
+  if (!parsed.success) return stateError(validationMessage("ایمیل درست نیست.", parsed.error));
+
+  const code = generateEmailCode();
+  const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
+  const email = normalizeEmail(parsed.data.email);
+  const purpose = parsed.data.purpose as EmailVerificationPurpose;
+
+  if (purpose === EmailVerificationPurpose.USER_SIGNUP) {
+    const existingUser = await prisma.user.findUnique({ where: { email }, select: { id: true } });
+    if (existingUser) {
+      return stateError("این ایمیل قبلاً ثبت شده. از بخش ورود استفاده کن.");
+    }
+  }
+
+  await prisma.emailVerificationCode.updateMany({
+    where: { email, purpose, consumedAt: null },
+    data: { consumedAt: new Date() },
+  });
+  await prisma.emailVerificationCode.create({
+    data: {
+      email,
+      purpose,
+      codeHash: hashVerificationCode(email, purpose, code),
+      expiresAt,
+    },
+  });
+
+  try {
+    const result = await sendVerificationEmail({ email, code, purpose });
+    const message = result.delivered ? "کد تایید به ایمیلت ارسال شد." : result.devMessage;
+    return { success: true, toast: { type: "success" as const, message: message ?? "کد تایید ساخته شد." }, devCode: result.delivered ? null : code };
+  } catch {
+    return stateError("ارسال ایمیل انجام نشد. تنظیمات SMTP را بررسی کن.");
+  }
+}
+
+export async function signupUserAction(_: unknown, formData: FormData) {
+  const parsed = userSignupSchema.safeParse({
+    name: formData.get("name"),
+    email: formData.get("email"),
+    password: formData.get("password"),
+    code: formData.get("code"),
+    joinCode: formData.get("joinCode")?.toString() || undefined,
+  });
+  if (!parsed.success) return stateError(validationMessage("اطلاعات ثبت‌نام درست نیست.", parsed.error));
+
+  const email = normalizeEmail(parsed.data.email);
+  const existingUser = await prisma.user.findUnique({ where: { email }, select: { id: true } });
+  if (existingUser) return stateError("این ایمیل قبلاً ثبت شده. از بخش ورود استفاده کن.");
+
+  const joinCode = parsed.data.joinCode ? normalizeJoinCode(parsed.data.joinCode) : "";
+  const group = joinCode
+    ? await prisma.group.findUnique({ where: { joinCode }, select: { id: true, name: true, slug: true, isActive: true } })
+    : null;
+  if (joinCode && (!group || !group.isActive)) {
+    return stateError("کد دعوت گروه معتبر نیست.");
+  }
+
+  const verification = await verifyEmailCode(email, EmailVerificationPurpose.USER_SIGNUP, parsed.data.code);
+  if (!verification.ok) return stateError(verification.message);
+
+  const passwordHash = await bcrypt.hash(parsed.data.password, 10);
+  let personId: string | null = null;
+  let redirectPath = "/account";
+  const newPersonUsername = group ? await generateUniqueUsername(group.id, parsed.data.name, email) : null;
+  try {
+    const user = await prisma.$transaction(async (tx) => {
+      const verifiedUser = await tx.user.create({
+        data: {
+          email,
+          name: parsed.data.name,
+          passwordHash,
+          emailVerifiedAt: new Date(),
+        },
+      });
+      await tx.emailVerificationCode.update({
+        where: { id: verification.verification.id },
+        data: { consumedAt: new Date() },
+      });
+      if (group) {
+        const existingPerson = await tx.person.findFirst({
+          where: { groupId: group.id, userId: verifiedUser.id, type: PersonType.MEMBER },
+          select: { id: true },
+        });
+        if (existingPerson) {
+          personId = existingPerson.id;
+        } else {
+          const person = await tx.person.create({
+            data: {
+              groupId: group.id,
+              userId: verifiedUser.id,
+              name: parsed.data.name,
+              username: newPersonUsername,
+              type: PersonType.MEMBER,
+              isActive: true,
+            },
+            select: { id: true },
+          });
+          personId = person.id;
+        }
+        redirectPath = `/${group.slug}/dashboard`;
+      }
+      return verifiedUser;
+    });
+    await createUserSession(user.id);
+    if (personId) await createSession(personId);
+  } catch {
+    return stateError("ثبت‌نام انجام نشد. دوباره تلاش کن.");
+  }
+
+  await setFlashToast("success", group ? `ثبت‌نام انجام شد و عضو گروه ${group.name} شدی.` : "ثبت‌نام انجام شد.");
+  redirect(redirectPath);
+}
+
+export async function userLoginAction(_: unknown, formData: FormData) {
+  const parsed = userLoginSchema.safeParse({
+    email: formData.get("email"),
+    password: formData.get("password"),
+  });
+  if (!parsed.success) return stateError(validationMessage("ورود ناموفق بود.", parsed.error));
+
+  const email = normalizeEmail(parsed.data.email);
+  const user = await prisma.user.findUnique({
+    where: { email },
+    select: { id: true, name: true, passwordHash: true },
+  });
+  if (!user) return stateError("این ایمیل ثبت نشده. اول ثبت‌نام کن.");
+
+  const ok = await verifyUserPassword(parsed.data.password, user.passwordHash);
+  if (!ok) return stateError("رمز ورود درست نیست.");
+
+  await createUserSession(user.id);
+  await setFlashToast("success", `${user.name} خوش آمدی.`);
+  redirect("/account");
+}
+
+export async function createAccountGroupAction(formData: FormData) {
+  const user = await requireUser();
+  const parsed = accountGroupSchema.safeParse({
+    name: formData.get("name"),
+    slug: normalizeSlug(String(formData.get("slug") ?? "")),
+  });
+  if (!parsed.success) {
+    await setFlashToast("error", validationMessage("اطلاعات گروه درست نیست.", parsed.error));
+    revalidatePath("/account");
+    return;
+  }
+
+  const existingGroup = await getGroupForSlug(parsed.data.slug, true);
+  if (existingGroup) {
+    await setFlashToast("error", "این شناسه گروه قبلا استفاده شده.");
+    revalidatePath("/account");
+    return;
+  }
+
+  let createdGroup;
+  let adminPersonId: string | null = null;
+  try {
+    const joinCode = await generateUniqueJoinCode();
+    createdGroup = await prisma.$transaction(async (tx) => {
+      const group = await tx.group.create({
+        data: {
+          name: parsed.data.name,
+          slug: parsed.data.slug,
+          joinCode,
+          isActive: true,
+        },
+      });
+      const person = await tx.person.create({
+        data: {
+          groupId: group.id,
+          userId: user.id,
+          name: user.name,
+          username: baseUsername(user.name, user.email),
+          type: PersonType.MEMBER,
+          isGroupAdmin: true,
+          isActive: true,
+        },
+        select: { id: true },
+      });
+      adminPersonId = person.id;
+      return group;
+    });
+    if (adminPersonId) await createGroupAdminSession(adminPersonId);
+  } catch {
+    await setFlashToast("error", "ساخت گروه انجام نشد.");
+    revalidatePath("/account");
+    return;
+  }
+
+  await setFlashToast("success", `گروه ${createdGroup.name} ساخته شد و تو ادمین آن شدی.`);
+  redirect(`/${createdGroup.slug}/admin`);
+}
+
+export async function submitMembershipRequestAction(formData: FormData) {
+  const user = await requireUser();
+  const parsed = membershipRequestSchema.safeParse({
+    groupIdentifier: String(formData.get("groupIdentifier") ?? ""),
+  });
+  if (!parsed.success) {
+    await setFlashToast("error", validationMessage("اطلاعات گروه درست نیست.", parsed.error));
+    revalidatePath("/account");
+    return;
+  }
+  const group = await resolveGroupByIdentifier(parsed.data.groupIdentifier);
+  if (!group || !group.isActive) {
+    await setFlashToast("error", "گروهی با این کد، شناسه یا نام پیدا نشد.");
+    revalidatePath("/account");
+    return;
+  }
+  const existingPerson = await prisma.person.findFirst({
+    where: { groupId: group.id, userId: user.id, type: PersonType.MEMBER, isActive: true },
+    select: { id: true },
+  });
+  if (existingPerson) {
+    await setFlashToast("success", `تو همین حالا عضو گروه ${group.name} هستی.`);
+    redirect(`/${group.slug}/dashboard`);
+  }
+  await prisma.membershipRequest.upsert({
+    where: { userId_groupId: { userId: user.id, groupId: group.id } },
+    update: {
+      status: MembershipRequestStatus.PENDING,
+      requestedAt: new Date(),
+      reviewedAt: null,
+      reviewedByPersonId: null,
+    },
+    create: {
+      userId: user.id,
+      groupId: group.id,
+      status: MembershipRequestStatus.PENDING,
+    },
+  });
+  await setFlashToast("success", `درخواست عضویت برای گروه ${group.name} ثبت شد.`);
+  revalidatePath("/account");
+}
+
+export async function enterMembershipAction(formData: FormData) {
+  const user = await requireUser();
+  const personId = String(formData.get("personId") ?? "");
+  const person = await prisma.person.findFirst({
+    where: { id: personId, userId: user.id, type: PersonType.MEMBER, isActive: true, group: { isActive: true } },
+    include: { group: true },
+  });
+  if (!person) {
+    await setFlashToast("error", "عضویت فعال پیدا نشد.");
+    redirect("/account");
+  }
+  await createSession(person.id);
+  await setFlashToast("success", `وارد گروه ${person.group.name} شدی.`);
+  redirect(`/${person.group.slug}/dashboard`);
+}
+
+export async function enterGroupAdminAction(formData: FormData) {
+  const user = await requireUser();
+  const personId = String(formData.get("personId") ?? "");
+  const person = await prisma.person.findFirst({
+    where: {
+      id: personId,
+      userId: user.id,
+      type: PersonType.MEMBER,
+      isGroupAdmin: true,
+      isActive: true,
+      group: { isActive: true },
+    },
+    include: { group: true },
+  });
+  if (!person) {
+    await setFlashToast("error", "دسترسی ادمین این گروه پیدا نشد.");
+    redirect("/account");
+  }
+  await createGroupAdminSession(person.id);
+  await setFlashToast("success", `وارد پنل مدیریت گروه ${person.group.name} شدی.`);
+  redirect(`/${person.group.slug}/admin`);
+}
+
 export async function selectGroupAction(_: unknown, formData: FormData) {
   const parsed = groupLookupSchema.safeParse({
     groupSlug: normalizeSlug(String(formData.get("groupSlug") ?? "")),
@@ -83,7 +477,7 @@ export async function selectGroupAction(_: unknown, formData: FormData) {
   const group = await getGroupForSlug(parsed.data.groupSlug);
   if (!group) return stateError("این گروه وجود ندارد یا فعال نیست.");
   await setFlashToast("success", `گروه ${group.name} پیدا شد.`);
-  redirect(`/${group.slug}/login`);
+  redirect("/login");
 }
 
 export async function loginAction(_: unknown, formData: FormData) {
@@ -193,9 +587,11 @@ export async function upsertGroupAction(formData: FormData) {
   const passwordHash = await bcrypt.hash(parsed.adminPassword, 12);
   let group;
   try {
+    const joinCode = await generateUniqueJoinCode();
     group = await prisma.group.create({
       data: {
         ...data,
+        joinCode,
         people: {
           create: {
             name: parsed.adminName,
@@ -216,6 +612,85 @@ export async function upsertGroupAction(formData: FormData) {
   await setFlashToast("success", `گروه ${group.name} ساخته شد.`);
   revalidatePath("/admin");
   redirect(`/admin/groups/${group.slug}`);
+}
+
+export async function logoutAllAction() {
+  await destroyAllSessions();
+  await setFlashToast("success", "با موفقیت خارج شدی.");
+  redirect("/login");
+}
+
+export async function reviewMembershipRequestAction(formData: FormData) {
+  const parsed = membershipReviewSchema.safeParse({
+    requestId: formData.get("requestId"),
+    groupSlug: normalizeSlug(String(formData.get("groupSlug") ?? "")),
+    decision: formData.get("decision"),
+  });
+  if (!parsed.success) {
+    await setFlashToast("error", validationMessage("درخواست عضویت درست نیست.", parsed.error));
+    return;
+  }
+
+  const { group, groupAdminId } = await requireGroupManager(parsed.data.groupSlug);
+  const request = await prisma.membershipRequest.findFirst({
+    where: { id: parsed.data.requestId, groupId: group.id },
+    include: { user: true },
+  });
+  if (!request || request.status !== MembershipRequestStatus.PENDING) {
+    await setFlashToast("error", "درخواست عضویت pending پیدا نشد.");
+    revalidateGroupAdminPages(group.slug);
+    return;
+  }
+
+  try {
+    if (parsed.data.decision === "reject") {
+      await prisma.membershipRequest.update({
+        where: { id: request.id },
+        data: {
+          status: MembershipRequestStatus.REJECTED,
+          reviewedAt: new Date(),
+          reviewedByPersonId: groupAdminId,
+        },
+      });
+      await setFlashToast("success", `درخواست ${request.user.name} رد شد.`);
+    } else {
+      const username = await generateUniqueUsername(group.id, request.user.name, request.user.email);
+      await prisma.$transaction(async (tx) => {
+        const existingPerson = await tx.person.findFirst({
+          where: { groupId: group.id, userId: request.userId, type: PersonType.MEMBER },
+          select: { id: true },
+        });
+        if (!existingPerson) {
+          await tx.person.create({
+            data: {
+              groupId: group.id,
+              userId: request.userId,
+              name: request.user.name,
+              username,
+              type: PersonType.MEMBER,
+              isActive: true,
+            },
+          });
+        }
+        await tx.membershipRequest.update({
+          where: { id: request.id },
+          data: {
+            status: MembershipRequestStatus.APPROVED,
+            reviewedAt: new Date(),
+            reviewedByPersonId: groupAdminId,
+          },
+        });
+      });
+      await setFlashToast("success", `${request.user.name} عضو گروه شد.`);
+    }
+  } catch {
+    await setFlashToast("error", "بررسی درخواست عضویت انجام نشد.");
+    revalidateGroupAdminPages(group.slug);
+    return;
+  }
+
+  revalidateGroupAdminPages(group.slug);
+  revalidatePath("/account");
 }
 
 export async function deleteGroupAction(formData: FormData) {
@@ -275,6 +750,11 @@ export async function upsertPersonAction(formData: FormData) {
     revalidateGroupAdminPages(groupSlug);
     return;
   }
+  if (parsed.type === "GUEST") {
+    await setFlashToast("error", "مهمان فقط داخل هر خرج اضافه می‌شود.");
+    revalidateGroupAdminPages(groupSlug);
+    return;
+  }
   if (parsed.type === "MEMBER" && !parsed.username) {
     await setFlashToast("error", "عضو ثابت باید نام کاربری داشته باشد.");
     revalidateGroupAdminPages(groupSlug);
@@ -298,7 +778,7 @@ export async function upsertPersonAction(formData: FormData) {
     isGroupAdmin,
     isActive: parsed.isActive ?? true,
   };
-  const label = parsed.type === "GUEST" ? "مهمان" : "کاربر";
+  const label = "کاربر";
   try {
     if (parsed.id) {
       await prisma.person.update({ where: { id: parsed.id }, data });
@@ -337,7 +817,20 @@ export async function deletePersonAction(formData: FormData) {
   ]);
   const label = person.type === PersonType.GUEST ? "مهمان" : "کاربر";
   try {
-    if (paidExpenses + createdExpenses + participations + markedPayments > 0) {
+    if (person.type === PersonType.MEMBER && paidExpenses + createdExpenses + participations + markedPayments > 0) {
+      await prisma.person.update({
+        where: { id },
+        data: {
+          type: PersonType.GUEST,
+          userId: null,
+          username: null,
+          passwordHash: null,
+          isGroupAdmin: false,
+          isActive: true,
+        },
+      });
+      await setFlashToast("success", `${person.name} از اعضا حذف شد و در خرج‌های قبلی با همان نام به‌صورت مهمان باقی ماند.`);
+    } else if (paidExpenses + createdExpenses + participations + markedPayments > 0) {
       await prisma.person.update({ where: { id }, data: { isActive: false } });
       await setFlashToast("success", `${label} ${person.name} غیرفعال شد.`);
     } else {
@@ -362,11 +855,16 @@ async function saveExpense(formData: FormData, mode: "create" | "edit") {
     await setFlashToast("error", "گروه پیدا نشد.");
     return;
   }
+  if (manager?.centralAdmin) {
+    await setFlashToast("error", "ادمین اصلی فقط گزارش خرج‌های گروه را می‌بیند و نمی‌تواند خرج ایجاد یا ویرایش کند.");
+    revalidatePath(`/admin/groups/${group.slug}`);
+    return;
+  }
   const current = isAdminMode ? null : await requirePerson(group.slug);
 
   const localGuests = formStringArray(formData, "localGuests").map((value) => {
-    const [tempId, name, username] = value.split("|||");
-    return { tempId, name, username };
+    const [tempId, name] = value.split("|||");
+    return { tempId, name };
   });
   const raw = {
     id: formData.get("id")?.toString(),
@@ -403,12 +901,12 @@ async function saveExpense(formData: FormData, mode: "create" | "edit") {
   const localGuestIdMap = new Map<string, string>();
   try {
     for (const guest of localGuests) {
-      if (guest.tempId && guest.name && guest.username && parsed.participantIds.includes(guest.tempId)) {
+      if (guest.tempId && guest.name && parsed.participantIds.includes(guest.tempId)) {
         const created = await prisma.person.create({
           data: {
             groupId: group.id,
             name: guest.name,
-            username: guest.username,
+            username: `guest-${randomBytes(4).toString("hex")}`,
             type: PersonType.GUEST,
             isActive: true,
           },
@@ -442,10 +940,13 @@ async function saveExpense(formData: FormData, mode: "create" | "edit") {
     return;
   }
 
-  const shareAmount = calculateShare(parsed.amount, participantIds.length);
+  const debtShare = calculateShare(parsed.amount, participantIds.length);
   const participantRows = participantIds.map((personId) => ({
     personId,
-    shareAmount,
+    shareAmount:
+      personId === parsed.paidByPersonId
+        ? calculatePayerShare(parsed.amount, participantIds.length)
+        : debtShare,
     paymentStatus: personId === parsed.paidByPersonId ? PaymentStatus.PAID : PaymentStatus.UNPAID,
     paidAt: personId === parsed.paidByPersonId ? new Date() : null,
     markedByPersonId: null,
@@ -463,7 +964,7 @@ async function saveExpense(formData: FormData, mode: "create" | "edit") {
             paidByPersonId: parsed.paidByPersonId,
             cardNumber: parsed.cardNumber || null,
             paymentNote: parsed.paymentNote || null,
-            date: new Date(parsed.date),
+            date: parseInputDate(parsed.date),
             description: parsed.description || null,
             participants: { create: participantRows },
           },
@@ -493,7 +994,7 @@ async function saveExpense(formData: FormData, mode: "create" | "edit") {
         createdByPersonId: isAdminMode ? parsed.paidByPersonId : current!.id,
         cardNumber: parsed.cardNumber || null,
         paymentNote: parsed.paymentNote || null,
-        date: new Date(parsed.date),
+        date: parseInputDate(parsed.date),
         description: parsed.description || null,
         participants: { create: participantRows },
       },
@@ -527,6 +1028,11 @@ export async function deleteExpenseAction(formData: FormData) {
   const group = manager?.group ?? (await getGroupForSlug(groupSlug, isAdminMode));
   if (!group) {
     await setFlashToast("error", "گروه پیدا نشد.");
+    return;
+  }
+  if (manager?.centralAdmin) {
+    await setFlashToast("error", "ادمین اصلی نمی‌تواند گزارش خرج‌های گروه را حذف کند.");
+    revalidatePath(`/admin/groups/${group.slug}`);
     return;
   }
   const current = isAdminMode ? null : await requirePerson(group.slug);

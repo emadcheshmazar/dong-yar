@@ -45,10 +45,14 @@ export async function getPeople(groupId: string) {
 }
 
 export async function getActivePeople(groupId: string) {
+  return getActiveMembers(groupId);
+}
+
+export async function getActiveMembers(groupId: string) {
   return prisma.person.findMany({
-    where: { groupId, isActive: true },
+    where: { groupId, isActive: true, type: PersonType.MEMBER },
     select: personPublicSelect,
-    orderBy: [{ type: "asc" }, { createdAt: "asc" }],
+    orderBy: { createdAt: "asc" },
   });
 }
 
@@ -129,6 +133,13 @@ export async function getAdminGroup(slug: string) {
       people: {
         select: personPublicSelect,
         orderBy: [{ type: "asc" }, { createdAt: "asc" }],
+      },
+      membershipRequests: {
+        include: {
+          user: true,
+          reviewedBy: { select: personPublicSelect },
+        },
+        orderBy: { requestedAt: "desc" },
       },
       expenses: {
         where: { status: ExpenseStatus.ACTIVE },

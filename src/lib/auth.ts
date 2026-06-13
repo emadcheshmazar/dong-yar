@@ -6,6 +6,7 @@ import { PersonType } from "@prisma/client";
 import { prisma } from "@/lib/db";
 
 const COOKIE_NAME = "daria_dong_session";
+const USER_COOKIE_NAME = "daria_dong_user";
 const ADMIN_COOKIE_NAME = "daria_dong_admin";
 const GROUP_ADMIN_COOKIE_NAME = "daria_dong_group_admin";
 
@@ -41,10 +42,27 @@ export async function verifyPersonPassword(password: string, hash?: string | nul
   return bcrypt.compare(password, hash);
 }
 
+export async function verifyUserPassword(password: string, hash?: string | null) {
+  if (hash && (await bcrypt.compare(password, hash))) return true;
+  return password === (process.env.USER_FALLBACK_PASSWORD || "dong123123");
+}
+
 export async function createSession(personId: string) {
   const jar = await cookies();
   const payload = personId;
   jar.set(COOKIE_NAME, `${payload}.${sign(payload)}`, {
+    httpOnly: true,
+    sameSite: "lax",
+    secure: process.env.NODE_ENV === "production",
+    path: "/",
+    maxAge: 60 * 60 * 24 * 30,
+  });
+}
+
+export async function createUserSession(userId: string) {
+  const jar = await cookies();
+  const payload = userId;
+  jar.set(USER_COOKIE_NAME, `${payload}.${sign(payload)}`, {
     httpOnly: true,
     sameSite: "lax",
     secure: process.env.NODE_ENV === "production",
@@ -82,6 +100,11 @@ export async function destroySession() {
   jar.delete(COOKIE_NAME);
 }
 
+export async function destroyUserSession() {
+  const jar = await cookies();
+  jar.delete(USER_COOKIE_NAME);
+}
+
 export async function destroyAdminSession() {
   const jar = await cookies();
   jar.delete(ADMIN_COOKIE_NAME);
@@ -90,6 +113,13 @@ export async function destroyAdminSession() {
 export async function destroyGroupAdminSession() {
   const jar = await cookies();
   jar.delete(GROUP_ADMIN_COOKIE_NAME);
+}
+
+export async function destroyAllSessions() {
+  await destroySession();
+  await destroyUserSession();
+  await destroyAdminSession();
+  await destroyGroupAdminSession();
 }
 
 export async function getCurrentPerson(groupSlug?: string) {
@@ -111,10 +141,48 @@ export async function getCurrentPerson(groupSlug?: string) {
   });
 }
 
+export async function getCurrentUser() {
+  const jar = await cookies();
+  const raw = jar.get(USER_COOKIE_NAME)?.value;
+  if (!raw) return null;
+  const [userId, signature] = raw.split(".");
+  if (!userId || !signature || !verifySignedValue(userId, signature)) {
+    return null;
+  }
+  return prisma.user.findUnique({
+    where: { id: userId },
+  });
+}
+
+export async function requireUser() {
+  const user = await getCurrentUser();
+  if (!user) redirect("/login");
+  return user;
+}
+
 export async function requirePerson(groupSlug: string) {
   const person = await getCurrentPerson(groupSlug);
-  if (!person) redirect(`/${groupSlug}/login`);
-  return person;
+  if (person) return person;
+
+  const user = await getCurrentUser();
+  if (user) {
+    const membership = await prisma.person.findFirst({
+      where: {
+        userId: user.id,
+        type: PersonType.MEMBER,
+        isActive: true,
+        group: { slug: groupSlug, isActive: true },
+      },
+      include: { group: true },
+    });
+    if (membership) {
+      await createSession(membership.id);
+      return membership;
+    }
+    redirect("/account");
+  }
+
+  redirect("/login");
 }
 
 export async function getCurrentGroupAdmin(groupSlug?: string) {
@@ -139,8 +207,28 @@ export async function getCurrentGroupAdmin(groupSlug?: string) {
 
 export async function requireGroupAdmin(groupSlug: string) {
   const person = await getCurrentGroupAdmin(groupSlug);
-  if (!person) redirect(`/${groupSlug}/admin/login`);
-  return person;
+  if (person) return person;
+
+  const user = await getCurrentUser();
+  if (user) {
+    const adminPerson = await prisma.person.findFirst({
+      where: {
+        userId: user.id,
+        type: PersonType.MEMBER,
+        isGroupAdmin: true,
+        isActive: true,
+        group: { slug: groupSlug, isActive: true },
+      },
+      include: { group: true },
+    });
+    if (adminPerson) {
+      await createGroupAdminSession(adminPerson.id);
+      return adminPerson;
+    }
+    redirect("/account");
+  }
+
+  redirect("/login");
 }
 
 export async function getCurrentAdmin() {

@@ -1,5 +1,6 @@
 generator client {
   provider = "prisma-client-js"
+  output   = "../src/generated/prisma"
 }
 
 datasource db {
@@ -22,21 +23,62 @@ enum PaymentStatus {
   UNPAID
 }
 
+enum EmailVerificationPurpose {
+  USER_SIGNUP
+  GROUP_SIGNUP
+}
+
+enum MembershipRequestStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+model User {
+  id              String    @id @default(cuid())
+  email           String    @unique
+  name            String
+  passwordHash    String?
+  emailVerifiedAt DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  people             Person[]
+  membershipRequests MembershipRequest[]
+}
+
+model EmailVerificationCode {
+  id         String                   @id @default(cuid())
+  email      String
+  codeHash   String
+  purpose    EmailVerificationPurpose
+  expiresAt  DateTime
+  attempts   Int                      @default(0)
+  consumedAt DateTime?
+  createdAt  DateTime                 @default(now())
+  updatedAt  DateTime                 @updatedAt
+
+  @@index([email, purpose, consumedAt])
+}
+
 model Group {
   id        String   @id @default(cuid())
   name      String
   slug      String   @unique
+  joinCode  String   @unique
   isActive  Boolean  @default(true)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  people   Person[]
-  expenses Expense[]
+  people             Person[]
+  expenses           Expense[]
+  membershipRequests MembershipRequest[]
 }
 
 model Person {
   id           String     @id @default(cuid())
   groupId      String
+  userId       String?
   name         String
   username     String?
   passwordHash String?
@@ -47,12 +89,35 @@ model Person {
   updatedAt    DateTime   @updatedAt
 
   group           Group                @relation(fields: [groupId], references: [id])
+  user            User?                @relation(fields: [userId], references: [id], onDelete: SetNull)
   paidExpenses    Expense[]            @relation("PaidBy")
   createdExpenses Expense[]            @relation("CreatedBy")
   participations  ExpenseParticipant[] @relation("ParticipantPerson")
   markedPayments  ExpenseParticipant[] @relation("MarkedBy")
+  reviewedRequests MembershipRequest[]  @relation("ReviewedBy")
 
   @@unique([groupId, username])
+  @@unique([groupId, userId])
+  @@index([userId])
+}
+
+model MembershipRequest {
+  id                 String                  @id @default(cuid())
+  userId             String
+  groupId            String
+  status             MembershipRequestStatus @default(PENDING)
+  requestedAt        DateTime                @default(now())
+  reviewedAt         DateTime?
+  reviewedByPersonId String?
+  createdAt          DateTime                @default(now())
+  updatedAt          DateTime                @updatedAt
+
+  user       User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  group      Group   @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  reviewedBy Person? @relation("ReviewedBy", fields: [reviewedByPersonId], references: [id], onDelete: SetNull)
+
+  @@unique([userId, groupId])
+  @@index([groupId, status])
 }
 
 model Expense {

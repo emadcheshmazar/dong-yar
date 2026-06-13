@@ -1,12 +1,12 @@
 import Link from "next/link";
-import { Eye, PlusCircle, Search } from "lucide-react";
+import { Eye, PlusCircle } from "lucide-react";
 import { AppShell } from "@/components/nav";
+import { ExpensesFilterForm } from "@/components/expenses-filter-form";
 import { Badge } from "@/components/badge";
 import { Card } from "@/components/ui/card";
-import { Input, Select } from "@/components/ui/input";
 import { requirePerson } from "@/lib/auth";
 import { getExpenses, getPeople } from "@/lib/queries";
-import { formatDate, formatToman } from "@/lib/utils";
+import { formatDate, formatToman, parseInputDate } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
 
@@ -25,8 +25,8 @@ export default async function ExpensesPage({
   const query = params.q ?? "";
   const payer = params.payer ?? "";
   const status = params.status ?? "all";
-  const from = params.from ? new Date(params.from) : null;
-  const to = params.to ? new Date(params.to) : null;
+  const from = params.from ? parseInputDate(params.from) : null;
+  const toEnd = params.to ? new Date(parseInputDate(params.to).getTime() + 24 * 60 * 60 * 1000 - 1) : null;
   const filtered = expenses.filter((expense) => {
     const unpaid = expense.participants.filter((p) => p.personId !== expense.paidByPersonId && p.paymentStatus === "UNPAID").length;
     const matchesQuery = !query || expense.title.includes(query) || expense.paidBy.name.includes(query);
@@ -34,14 +34,14 @@ export default async function ExpensesPage({
     const matchesStatus = status === "all" || (status === "open" ? unpaid > 0 : unpaid === 0);
     const date = new Date(expense.date);
     const matchesFrom = !from || date >= from;
-    const matchesTo = !to || date <= to;
+    const matchesTo = !toEnd || date <= toEnd;
     return matchesQuery && matchesPayer && matchesStatus && matchesFrom && matchesTo;
   });
   return (
     <AppShell groupSlug={current.group.slug}>
       <div className="mb-6 flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
         <div>
-          <h1 className="text-3xl font-black">همه خرج‌ها</h1>
+          <h1 className="text-2xl font-black sm:text-3xl">همه خرج‌ها</h1>
           <p className="mt-1 text-sm text-slate-600">همه می‌بینن، همه می‌تونن خرج ثبت کنن.</p>
         </div>
         <Link className="inline-flex h-11 items-center gap-2 rounded-xl bg-emerald-600 px-4 text-sm font-bold text-white" href={`${prefix}/expenses/new`}>
@@ -50,45 +50,60 @@ export default async function ExpensesPage({
         </Link>
       </div>
       <Card className="mb-5">
-        <form className="grid gap-3 md:grid-cols-5">
-          <div className="relative md:col-span-2">
-            <Search className="absolute right-3 top-3 size-4 text-slate-400" />
-            <Input name="q" defaultValue={query} className="pr-10" placeholder="جستجو در عنوان یا پرداخت‌کننده" />
-          </div>
-          <Input name="from" type="date" defaultValue={params.from ?? ""} />
-          <Input name="to" type="date" defaultValue={params.to ?? ""} />
-          <Select name="payer" defaultValue={payer}>
-            <option value="">همه پرداخت‌کننده‌ها</option>
-            {people.members.map((member) => (
-              <option key={member.id} value={member.id}>{member.name}</option>
-            ))}
-          </Select>
-          <Select name="status" defaultValue={status}>
-            <option value="all">همه وضعیت‌ها</option>
-            <option value="open">باز</option>
-            <option value="paid">تسویه شده</option>
-          </Select>
-          <button className="h-10 rounded-xl bg-slate-900 px-4 text-sm font-bold text-white md:col-span-5">اعمال فیلتر</button>
-        </form>
+        <ExpensesFilterForm
+          query={query}
+          from={params.from ?? ""}
+          to={params.to ?? ""}
+          payer={payer}
+          status={status}
+          members={people.members}
+        />
       </Card>
       <div className="space-y-3">
         {filtered.map((expense) => {
           const unpaid = expense.participants.filter((p) => p.personId !== expense.paidByPersonId && p.paymentStatus === "UNPAID");
-          const share = expense.participants[0]?.shareAmount ?? 0;
+          const debtShare =
+            expense.participants.find((participant) => participant.personId !== expense.paidByPersonId)?.shareAmount ??
+            expense.participants[0]?.shareAmount ??
+            0;
           return (
-            <Card key={expense.id} className="grid gap-4 md:grid-cols-[120px_1fr_130px_120px_120px_1fr_70px] md:items-center">
-              <span className="text-sm text-slate-500">{formatDate(expense.date)}</span>
-              <div>
-                <p className="font-black">{expense.title}</p>
-                <p className="text-sm text-slate-500">پرداخت‌کننده: {expense.paidBy.name}</p>
+            <Card key={expense.id} className="p-4">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0 flex-1">
+                  <p className="font-black">{expense.title}</p>
+                  <p className="mt-1 text-sm text-slate-500">
+                    {formatDate(expense.date)} · پرداخت‌کننده: {expense.paidBy.name}
+                  </p>
+                </div>
+                <Link
+                  className="inline-flex size-10 shrink-0 items-center justify-center rounded-xl bg-emerald-50 text-emerald-800"
+                  href={`${prefix}/expenses/${expense.id}`}
+                >
+                  <Eye className="size-4" />
+                </Link>
               </div>
-              <span className="font-black">{formatToman(expense.amount)}</span>
-              <span className="text-sm">{expense.participants.length} نفر</span>
-              <span className="text-sm">{formatToman(share)}</span>
-              <Badge tone={unpaid.length ? "amber" : "green"}>{unpaid.length ? `${unpaid.length} نفر هنوز دنگ ندادن` : "همه حساب کردن"}</Badge>
-              <Link className="inline-flex size-10 items-center justify-center rounded-xl bg-emerald-50 text-emerald-800" href={`${prefix}/expenses/${expense.id}`}>
-                <Eye className="size-4" />
-              </Link>
+              <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2 text-sm sm:grid-cols-4">
+                <div>
+                  <dt className="text-slate-500">مبلغ</dt>
+                  <dd className="font-black">{formatToman(expense.amount)}</dd>
+                </div>
+                <div>
+                  <dt className="text-slate-500">نفرات</dt>
+                  <dd>{expense.participants.length} نفر</dd>
+                </div>
+                <div>
+                  <dt className="text-slate-500">سهم</dt>
+                  <dd>{formatToman(debtShare)}</dd>
+                </div>
+                <div>
+                  <dt className="text-slate-500">وضعیت</dt>
+                  <dd>
+                    <Badge tone={unpaid.length ? "amber" : "green"}>
+                      {unpaid.length ? `${unpaid.length} نفر هنوز دنگ ندادن` : "همه حساب کردن"}
+                    </Badge>
+                  </dd>
+                </div>
+              </dl>
             </Card>
           );
         })}

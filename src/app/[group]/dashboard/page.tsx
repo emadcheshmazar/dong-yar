@@ -3,6 +3,7 @@ import { ArrowLeft, Coffee, HandCoins, ReceiptText, WalletCards } from "lucide-r
 import { AppShell } from "@/components/nav";
 import { Badge } from "@/components/badge";
 import { Card } from "@/components/ui/card";
+import { CopyableText } from "@/components/copyable-text";
 import { MarkPaidButton } from "@/components/payment-buttons";
 import { requirePerson } from "@/lib/auth";
 import { getDashboard } from "@/lib/queries";
@@ -25,7 +26,7 @@ export default async function DashboardPage({ params }: { params: Promise<{ grou
     <AppShell groupSlug={person.group.slug}>
       <div className="mb-6 flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
         <div>
-          <h1 className="text-3xl font-black">داشبورد من</h1>
+          <h1 className="text-2xl font-black sm:text-3xl">داشبورد من</h1>
           <p className="mt-1 text-sm text-slate-600">سلام {person.name}، اینجا سهم‌ها و طلب‌ها را ساده می‌بینی.</p>
         </div>
         <Link className="inline-flex h-11 items-center gap-2 rounded-xl bg-emerald-600 px-4 text-sm font-bold text-white" href={`${prefix}/expenses/new`}>
@@ -53,8 +54,12 @@ export default async function DashboardPage({ params }: { params: Promise<{ grou
                     <div>
                       <Link className="font-black text-emerald-800" href={`${prefix}/expenses/${expense.id}`}>{expense.title}</Link>
                       <p className="text-sm text-slate-500">به {expense.paidBy.name}، {formatDate(expense.date)}</p>
-                      {expense.cardNumber || expense.paymentNote ? (
-                        <p className="mt-2 text-sm text-slate-700">{expense.cardNumber || expense.paymentNote}</p>
+                      {expense.cardNumber ? (
+                        <div className="mt-2">
+                          <CopyableText value={expense.cardNumber} label="شماره کارت:" />
+                        </div>
+                      ) : expense.paymentNote ? (
+                        <p className="mt-2 text-sm text-slate-700">{expense.paymentNote}</p>
                       ) : null}
                     </div>
                     <Badge tone="amber">{formatToman(participant?.shareAmount ?? 0)}</Badge>

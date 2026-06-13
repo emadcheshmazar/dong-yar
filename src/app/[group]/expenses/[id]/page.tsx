@@ -5,6 +5,7 @@ import { AppShell } from "@/components/nav";
 import { Badge } from "@/components/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { CopyableText } from "@/components/copyable-text";
 import { MarkPaidButton, ToggleGuestPaymentButton } from "@/components/payment-buttons";
 import { deleteExpenseAction } from "@/app/actions";
 import { requirePerson } from "@/lib/auth";
@@ -26,11 +27,11 @@ export default async function ExpenseDetailPage({ params }: { params: Promise<{ 
     <AppShell groupSlug={current.group.slug}>
       <div className="mb-6 flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
         <div>
-          <h1 className="text-3xl font-black">{expense.title}</h1>
+          <h1 className="text-2xl font-black sm:text-3xl">{expense.title}</h1>
           <p className="mt-1 text-sm text-slate-600">پرداخت‌کننده: {expense.paidBy.name}، تاریخ {formatDate(expense.date)}</p>
         </div>
         {isCreator ? (
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
             <Link className="inline-flex h-10 items-center gap-2 rounded-xl bg-amber-100 px-4 text-sm font-bold text-amber-950" href={`/${current.group.slug}/expenses/${expense.id}/edit`}>
               <Pencil className="size-4" />
               ویرایش خرج
@@ -48,7 +49,7 @@ export default async function ExpenseDetailPage({ params }: { params: Promise<{ 
           <p className="rounded-xl bg-slate-100 px-4 py-3 text-sm font-bold text-slate-600">فقط ثبت‌کننده خرج می‌تواند ویرایش کند.</p>
         )}
       </div>
-      <section className="grid gap-4 md:grid-cols-5">
+      <section className="grid grid-cols-2 gap-4 md:grid-cols-5">
         <Card><p className="text-sm text-slate-500">مبلغ کل</p><b className="mt-2 block text-xl">{formatToman(expense.amount)}</b></Card>
         <Card><p className="text-sm text-slate-500">سهم هر نفر</p><b className="mt-2 block text-xl">{formatToman(share)}</b></Card>
         <Card><p className="text-sm text-slate-500">تعداد نفرات</p><b className="mt-2 block text-xl">{expense.participants.length}</b></Card>
@@ -57,7 +58,12 @@ export default async function ExpenseDetailPage({ params }: { params: Promise<{ 
       </section>
       {(expense.cardNumber || expense.paymentNote || expense.description) ? (
         <Card className="mt-5 bg-amber-50">
-          {expense.cardNumber ? <p><b>شماره کارت:</b> {expense.cardNumber}</p> : null}
+          {expense.cardNumber ? (
+            <p className="flex flex-wrap items-center gap-2">
+              <b>شماره کارت:</b>
+              <CopyableText value={expense.cardNumber} />
+            </p>
+          ) : null}
           {expense.paymentNote ? <p><b>یادداشت پرداخت:</b> {expense.paymentNote}</p> : null}
           {expense.description ? <p><b>توضیحات:</b> {expense.description}</p> : null}
         </Card>

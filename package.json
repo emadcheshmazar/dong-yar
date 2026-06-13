@@ -3,8 +3,8 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
-    "build": "next build",
+    "dev": "prisma generate && next dev",
+    "build": "prisma generate && next build",
     "start": "next start",
     "lint": "eslint",
     "type-check": "tsc --noEmit",
@@ -14,13 +14,16 @@
     "seed": "tsx prisma/seed.ts",
     "db:clear": "tsx prisma/seed.ts --clear"
   },
+  "postinstall": "prisma generate",
   "dependencies": {
     "@prisma/client": "^6.19.0",
     "bcryptjs": "^3.0.3",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
+    "jalaali-js": "^1.2.8",
     "lucide-react": "^1.17.0",
     "next": "16.2.9",
+    "nodemailer": "^8.0.11",
     "react": "19.2.4",
     "react-dom": "19.2.4",
     "tailwind-merge": "^3.6.0",
@@ -28,7 +31,9 @@
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
+    "@types/jalaali-js": "^1.2.0",
     "@types/node": "^20",
+    "@types/nodemailer": "^8.0.1",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "eslint": "^9",

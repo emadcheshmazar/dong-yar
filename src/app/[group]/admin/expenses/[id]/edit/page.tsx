@@ -4,7 +4,8 @@ import { ArrowRight } from "lucide-react";
 import { deleteExpenseAction } from "@/app/actions";
 import { ExpenseForm } from "@/components/expense-form";
 import { requireGroupAdmin } from "@/lib/auth";
-import { getExpense, getPeople } from "@/lib/queries";
+import { getActiveMembers, getExpense } from "@/lib/queries";
+import { PersonType } from "@prisma/client";
 
 export const dynamic = "force-dynamic";
 
@@ -15,9 +16,11 @@ export default async function GroupAdminEditExpensePage({
 }) {
   const { group, id } = await params;
   const admin = await requireGroupAdmin(group);
-  const [expense, peopleByType] = await Promise.all([getExpense(admin.groupId, id), getPeople(admin.groupId)]);
+  const [expense, people] = await Promise.all([getExpense(admin.groupId, id), getActiveMembers(admin.groupId)]);
   if (!expense) notFound();
-  const people = [...peopleByType.members, ...peopleByType.guests];
+  const expenseGuests = expense.participants
+    .map((participant) => participant.person)
+    .filter((person) => person.type === PersonType.GUEST);
 
   return (
     <main className="min-h-screen bg-[#f8faf2] px-4 py-6 text-slate-900">
@@ -30,7 +33,15 @@ export default async function GroupAdminEditExpensePage({
           <h1 className="text-3xl font-black">ویرایش خرج</h1>
           <p className="mt-1 text-sm text-slate-600">این تغییر فقط روی گروه {admin.group.name} اعمال می‌شود.</p>
         </div>
-        <ExpenseForm groupSlug={admin.group.slug} people={people} currentPersonId={expense.paidByPersonId} expense={expense} adminMode managerScope="group" />
+        <ExpenseForm
+          groupSlug={admin.group.slug}
+          people={people}
+          expenseGuests={expenseGuests}
+          currentPersonId={expense.paidByPersonId}
+          expense={expense}
+          adminMode
+          managerScope="group"
+        />
         <form id="delete-expense" action={deleteExpenseAction}>
           <input type="hidden" name="adminMode" value="on" />
           <input type="hidden" name="managerScope" value="group" />

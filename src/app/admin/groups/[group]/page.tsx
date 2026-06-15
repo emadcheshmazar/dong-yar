@@ -9,6 +9,7 @@ import {
 } from "@/app/actions";
 import { MembershipAdminCard } from "@/components/admin/membership-admin-card";
 import { Badge } from "@/components/badge";
+import { CopyableText } from "@/components/copyable-text";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -148,7 +149,9 @@ export default async function AdminGroupPage({ params }: { params: Promise<{ gro
                   <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
                     <div>
                       <dt className="text-slate-500">مبلغ</dt>
-                      <dd className="font-black">{formatToman(expense.amount)}</dd>
+                      <dd className="mt-1">
+                        <CopyableText value={formatToman(expense.amount)} />
+                      </dd>
                     </div>
                     <div>
                       <dt className="text-slate-500">وضعیت</dt>

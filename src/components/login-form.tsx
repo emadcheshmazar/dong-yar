@@ -40,7 +40,7 @@ export function LoginForm({ groupSlug, usernames }: { groupSlug: string; usernam
       </label>
       {state?.error ? <p className="rounded-xl bg-rose-50 p-3 text-sm font-semibold text-rose-700">{state.error}</p> : null}
       <Button className="w-full" size="lg" disabled={pending}>
-        {pending ? "داریم وارد می‌شیم..." : "ورود به داریا دنگ"}
+        {pending ? "داریم وارد می‌شیم..." : "ورود به دنگ یار"}
       </Button>
     </form>
   );

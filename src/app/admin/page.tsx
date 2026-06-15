@@ -25,7 +25,7 @@ export default async function AdminPage() {
       <header className="border-b border-slate-200 bg-white/90">
         <div className="mx-auto flex max-w-6xl flex-col gap-3 px-4 py-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <h1 className="text-2xl font-black">پنل ادمین داریا دنگ</h1>
+            <h1 className="text-2xl font-black">پنل ادمین دنگ یار</h1>
             <p className="text-sm text-slate-600">لیست گروه‌ها فقط اینجا قابل مشاهده است.</p>
           </div>
           <form action={logout}>

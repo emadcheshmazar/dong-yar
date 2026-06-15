@@ -72,7 +72,9 @@ export default async function ExpenseDetailPage({ params }: { params: Promise<{ 
       <section className="grid grid-cols-2 gap-4 md:grid-cols-5">
         <Card>
           <p className="text-sm text-slate-500">مبلغ کل</p>
-          <b className="mt-2 block text-xl">{formatExpenseAmount(expense)}</b>
+          <div className="mt-2">
+            <CopyableText value={formatExpenseAmount(expense)} className="text-base" />
+          </div>
         </Card>
         <Card>
           <p className="text-sm text-slate-500">{isCustom ? "سهم‌های ثبت‌شده" : "سهم هر نفر"}</p>
@@ -143,6 +145,11 @@ export default async function ExpenseDetailPage({ params }: { params: Promise<{ 
                   {isPayer ? "پرداخت‌کننده" : participant.paymentStatus === "PAID" ? "پرداخت کرده" : "پرداخت نکرده"}
                 </Badge>
                 <div>
+                  {!isPayer && participant.paymentStatus === "PAID" && participant.paidAt ? (
+                    <p className="mb-2 text-xs font-bold text-emerald-700">
+                      تاریخ پرداخت: {formatDate(participant.paidAt)}
+                    </p>
+                  ) : null}
                   {isOwnDebt ? (
                     <MarkPaidButton
                       groupSlug={current.group.slug}
@@ -152,7 +159,12 @@ export default async function ExpenseDetailPage({ params }: { params: Promise<{ 
                       note={expense.cardNumber || expense.paymentNote}
                     />
                   ) : participant.person.type === PersonType.GUEST && !isPayer && participant.shareAmount != null ? (
-                    <ToggleGuestPaymentButton groupSlug={current.group.slug} participantId={participant.id} />
+                    <ToggleGuestPaymentButton
+                      groupSlug={current.group.slug}
+                      participantId={participant.id}
+                      isPaid={participant.paymentStatus === "PAID"}
+                      personName={participant.person.name}
+                    />
                   ) : null}
                 </div>
               </div>

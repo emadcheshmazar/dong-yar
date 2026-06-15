@@ -29,7 +29,7 @@ services:
       SESSION_SECRET: change-this-in-production
       APP_SHARED_PASSWORD: dong123456
       ADMIN_PASSWORD: 1qaz@WSX
-      PORT: ${APP_PORT:-3000}
+      PORT: 3000
     ports:
       - "${APP_PORT:-3000}:3000"
     command: sh -c "npx prisma migrate deploy && node server.js"

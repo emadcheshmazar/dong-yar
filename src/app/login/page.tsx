@@ -22,7 +22,7 @@ export default async function LoginPage({
           <div className="mx-auto mb-4 grid size-16 place-items-center rounded-3xl bg-emerald-600 text-white shadow-lg">
             <Coins className="size-8" />
           </div>
-          <h1 className="text-3xl font-black">داریا دنگ</h1>
+          <h1 className="text-3xl font-black">دنگ یار</h1>
           <p className="mt-2 text-sm text-slate-600">ورود کاربران یا ثبت‌نام با ایمیل</p>
         </div>
         <Card>

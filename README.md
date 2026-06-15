@@ -1,4 +1,4 @@
-# داریا دنگ
+# دنگ یار
 
 اپ وب برای مدیریت خرج‌های مشترک تیم: ثبت خرج، تقسیم مساوی یا سفارشی، پیگیری بدهی/طلب، ثبت‌نام با ایمیل و پنل ادمین گروه.
 
@@ -29,7 +29,7 @@
 
 ```bash
 git clone <REPO_URL>
-cd daria-food
+cd dong-yar
 cp .env.example .env
 # مقادیر .env را ویرایش کنید (بخش «متغیرهای محیطی»)
 docker compose up --build -d
@@ -114,7 +114,7 @@ cp .env.example .env
 | `SMTP_SECURE`            | برای ایمیل       | `false` برای پورت 587، `true` برای 465                                                                          |
 | `SMTP_USER`              | برای ایمیل       | آدرس ایمیل فرستنده                                                                                              |
 | `SMTP_PASS`              | برای ایمیل       | App Password (مثلاً Gmail)                                                                                      |
-| `EMAIL_FROM`             | برای ایمیل       | مثلاً `Daria Dong <noreply@example.com>`                                                                        |
+| `EMAIL_FROM`             | برای ایمیل       | مثلاً `Dong Yar <noreply@example.com>`                                                                          |
 | `APP_PORT`               | اختیاری          | پورت host؛ پیش‌فرض `3000`                                                                                       |
 
 
@@ -256,4 +256,3 @@ npm run migrate:deploy
 - خرج **مساوی**: مبلغ کل تقسیم می‌شود
 - خرج **سفارشی**: هر عضو سهم خودش را وارد می‌کند؛ ادمین گروه سهم مهمان‌ها را تعیین می‌کند
 - مهمان فقط در سطح هر خرج است، نه لیست ثابت گروه
-

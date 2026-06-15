@@ -4,8 +4,8 @@ import { getFlashToast } from "@/lib/flash-toast";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "داریا دنگ",
-  description: "مدیریت ساده خرج‌های دوستانه شرکت داریا",
+  title: "دنگ یار",
+  description: "مدیریت ساده خرج‌های مشترک تیم‌ها",
 };
 
 export default async function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {

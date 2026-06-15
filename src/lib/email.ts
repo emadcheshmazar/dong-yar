@@ -28,7 +28,7 @@ function getSmtpConfig() {
 export async function sendVerificationEmail({ email, code, purpose }: VerificationEmailInput) {
   const smtp = getSmtpConfig();
   const label = purposeLabels[purpose];
-  const subject = `کد تایید داریا دنگ برای ${label}`;
+  const subject = `کد تایید دنگ یار برای ${label}`;
   const text = `کد تایید شما: ${code}\nاین کد تا ۱۰ دقیقه معتبر است.`;
 
   if (!smtp) {

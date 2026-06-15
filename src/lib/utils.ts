@@ -9,7 +9,7 @@ import {
 
 export { parseInputDate };
 
-const SHARE_ROUND_UNIT = 5000;
+const SHARE_ROUND_UNIT = 1000;
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -43,7 +43,7 @@ export function toInputDate(date: Date | string) {
   return jalaliPartsToGregorianISO(gregorianToJalaliParts(date));
 }
 
-/** سهم هر بدهکار، رند به بالا تا ۵۰۰۰ تومان */
+/** سهم هر بدهکار، رند به بالا تا ۱۰۰۰ تومان */
 export function calculateShare(amount: number, participantsCount: number) {
   if (participantsCount <= 0) return 0;
   if (participantsCount === 1) return amount;

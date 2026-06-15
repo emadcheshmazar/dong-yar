@@ -29,7 +29,7 @@ export function AppShellNav({
         <Link href={`${prefix}/dashboard`} className="flex min-w-0 items-center gap-3" onClick={() => setOpen(false)}>
           <span className="grid size-11 shrink-0 place-items-center rounded-2xl bg-emerald-600 text-xl font-black text-white">د</span>
           <span className="min-w-0">
-            <span className="block truncate text-lg font-black">داریا دنگ</span>
+            <span className="block truncate text-lg font-black">دنگ یار</span>
             <span className="block truncate text-xs text-slate-500">
               سلام {personName}، گروه {groupName}
             </span>

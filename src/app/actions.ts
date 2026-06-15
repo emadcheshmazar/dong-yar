@@ -1182,6 +1182,8 @@ export async function markPaidAction(formData: FormData) {
   const groupSlug = normalizeSlug(String(formData.get("groupSlug") ?? ""));
   const current = await requirePerson(groupSlug);
   const expenseId = String(formData.get("expenseId") ?? "");
+  const paidAtInput = String(formData.get("paidAt") ?? "");
+  const paidAt = paidAtInput ? parseInputDate(paidAtInput) : new Date();
   const participant = await prisma.expenseParticipant.findFirst({
     where: {
       expenseId,
@@ -1198,7 +1200,7 @@ export async function markPaidAction(formData: FormData) {
   try {
     await prisma.expenseParticipant.update({
       where: { id: participant.id },
-      data: { paymentStatus: PaymentStatus.PAID, paidAt: new Date(), markedByPersonId: current.id },
+      data: { paymentStatus: PaymentStatus.PAID, paidAt, markedByPersonId: current.id },
     });
   } catch {
     await setFlashToast("error", `ثبت پرداخت دنگ ${participant.expense.title} انجام نشد.`);
@@ -1214,6 +1216,8 @@ export async function toggleGuestPaymentAction(formData: FormData) {
   const groupSlug = normalizeSlug(String(formData.get("groupSlug") ?? ""));
   const current = await requirePerson(groupSlug);
   const participantId = String(formData.get("participantId") ?? "");
+  const paidAtInput = String(formData.get("paidAt") ?? "");
+  const paidAt = paidAtInput ? parseInputDate(paidAtInput) : new Date();
   const participant = await prisma.expenseParticipant.findFirst({
     where: {
       id: participantId,
@@ -1232,7 +1236,7 @@ export async function toggleGuestPaymentAction(formData: FormData) {
       where: { id: participantId },
       data: {
         paymentStatus: next,
-        paidAt: next === PaymentStatus.PAID ? new Date() : null,
+        paidAt: next === PaymentStatus.PAID ? paidAt : null,
         markedByPersonId: next === PaymentStatus.PAID ? current.id : null,
       },
     });

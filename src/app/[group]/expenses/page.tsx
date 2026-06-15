@@ -3,6 +3,7 @@ import { Eye, PlusCircle } from "lucide-react";
 import { AppShell } from "@/components/nav";
 import { ExpensesFilterForm } from "@/components/expenses-filter-form";
 import { Badge } from "@/components/badge";
+import { CopyableText } from "@/components/copyable-text";
 import { Card } from "@/components/ui/card";
 import { requirePerson } from "@/lib/auth";
 import { getExpenses, getPeople } from "@/lib/queries";
@@ -89,7 +90,9 @@ export default async function ExpensesPage({
               <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2 text-sm sm:grid-cols-4">
                 <div>
                   <dt className="text-slate-500">مبلغ</dt>
-                  <dd className="font-black">{formatExpenseAmount(expense)}</dd>
+                  <dd className="mt-1">
+                    <CopyableText value={formatExpenseAmount(expense)} />
+                  </dd>
                 </div>
                 <div>
                   <dt className="text-slate-500">نفرات</dt>

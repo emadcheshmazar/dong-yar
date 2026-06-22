@@ -156,9 +156,9 @@ cp .env.example .env
 | `DATABASE_URL`           | در Docker خودکار | در `docker-compose` برای سرویس `app` روی `postgres` داخلی ست می‌شود. اگر DB خارجی دارید، این مقدار را عوض کنید. |
 | `POSTGRES_VOLUME_NAME`   | **بله**          | نام volume موجود و پایدار دیتابیس روی سرور                                                                      |
 | `POSTGRES_PASSWORD`      | **بله**          | رمز PostgreSQL؛ برای URL داخلی از حروف/عدد و کاراکترهای URL-safe استفاده شود                                    |
-| `APP_MEMORY_LIMIT`       | اختیاری          | سقف RAM اپ؛ پیش‌فرض `384m`                                                                                       |
-| `POSTGRES_MEMORY_LIMIT`  | اختیاری          | سقف RAM PostgreSQL؛ پیش‌فرض `256m`                                                                               |
-| `NODE_MAX_OLD_SPACE_SIZE` | اختیاری         | سقف heap نود؛ پیش‌فرض `256` مگابایت                                                                              |
+| `APP_MEMORY_LIMIT`       | اختیاری          | سقف RAM اپ؛ پیش‌فرض `256m`                                                                                       |
+| `POSTGRES_MEMORY_LIMIT`  | اختیاری          | سقف RAM PostgreSQL؛ پیش‌فرض `192m`                                                                               |
+| `NODE_MAX_OLD_SPACE_SIZE` | اختیاری         | سقف heap نود؛ پیش‌فرض `160` مگابایت                                                                              |
 | `SESSION_SECRET`         | **بله**          | رشته تصادفی بلند برای امضای کوکی‌ها. در production حتماً عوض شود.                                               |
 | `ADMIN_PASSWORD`         | **بله**          | رمز ورود ادمین مرکزی (`/admin/login`)                                                                           |
 | `APP_SHARED_PASSWORD`    | توصیه            | رمز مشترک ورود اعضای گروه (legacy)                                                                              |

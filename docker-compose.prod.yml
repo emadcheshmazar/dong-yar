@@ -27,7 +27,7 @@ services:
       interval: 10s
       timeout: 5s
       retries: 10
-    mem_limit: ${POSTGRES_MEMORY_LIMIT:-256m}
+    mem_limit: ${POSTGRES_MEMORY_LIMIT:-192m}
     logging:
       driver: json-file
       options:
@@ -46,12 +46,12 @@ services:
         condition: service_healthy
     environment:
       DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-daria_dong}?schema=public
-      NODE_OPTIONS: --max-old-space-size=${NODE_MAX_OLD_SPACE_SIZE:-256}
+      NODE_OPTIONS: --max-old-space-size=${NODE_MAX_OLD_SPACE_SIZE:-160}
       PORT: 3000
     ports:
       - "${APP_PORT:-3000}:3000"
     command: sh -c "npx prisma migrate deploy && node server.js"
-    mem_limit: ${APP_MEMORY_LIMIT:-384m}
+    mem_limit: ${APP_MEMORY_LIMIT:-256m}
     stop_grace_period: 30s
     healthcheck:
       test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:3000/login || exit 1"]

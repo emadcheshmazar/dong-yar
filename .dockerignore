@@ -1,5 +1,6 @@
 node_modules
 .next
+src/generated/prisma
 .git
 .env
 .env.local
@@ -14,6 +15,9 @@ coverage
 .vercel
 logs
 tmp
+backups
+*.sql
+*.sql.gz
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*

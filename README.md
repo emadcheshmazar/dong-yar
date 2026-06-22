@@ -22,17 +22,62 @@
 | Docker Compose | v2+                                       |
 | Git            | دسترسی clone به ریپو                      |
 | پورت           | پیش‌فرض `3000` (قابل تغییر با `APP_PORT`) |
-| RAM            | حداقل ~1GB برای build اول (Next.js)       |
+| RAM            | 512MB تا 1GB برای اجرای کم‌ترافیک؛ build در GitHub انجام می‌شود |
 
 
-### استقرار سریع (پیشنهادی)
+### استقرار Production روی سرور ضعیف
+
+ایمیج production توسط GitHub Actions ساخته و در GHCR منتشر می‌شود. سرور فقط ایمیج آماده را pull می‌کند و دیگر Next.js را build نمی‌کند.
+
+برای نصب تازه:
 
 ```bash
-git clone <REPO_URL>
+git clone https://github.com/emadcheshmazar/dong-yar.git
 cd dong-yar
-cp .env.example .env
-# مقادیر .env را ویرایش کنید (بخش «متغیرهای محیطی»)
-docker compose up --build -d
+test -f .env || cp .env.example .env
+```
+
+قبل از اولین انتقال، از دیتابیس فعلی بکاپ بگیرید:
+
+```bash
+mkdir -p backups
+docker compose exec -T postgres pg_dump -U postgres daria_dong | gzip > "backups/dongyar-before-migration-$(date +%F-%H%M).sql.gz"
+```
+
+نام volume فعلی دیتابیس را در حالی که کانتینر فعلی هنوز وجود دارد پیدا کنید:
+
+```bash
+CURRENT_VOLUME=$(docker inspect "$(docker compose ps -q postgres)" --format '{{range .Mounts}}{{if eq .Destination "/var/lib/postgresql/data"}}{{.Name}}{{end}}{{end}}')
+echo "$CURRENT_VOLUME"
+```
+
+مقدار چاپ‌شده را در `.env` قرار دهید. برای دیتابیس فعلی، رمز باید همان رمز قبلی PostgreSQL باشد:
+
+```dotenv
+POSTGRES_VOLUME_NAME=نام-volume-فعلی
+POSTGRES_USER=postgres
+POSTGRES_PASSWORD=رمز-فعلی-دیتابیس
+POSTGRES_DB=daria_dong
+```
+
+اگر نصب کاملاً جدید است و دیتای قبلی ندارید:
+
+```bash
+docker volume create dongyar_postgres_data
+```
+
+سپس `POSTGRES_VOLUME_NAME=dongyar_postgres_data` را در `.env` بگذارید و production را بالا بیاورید:
+
+```bash
+git pull
+docker compose -f docker-compose.prod.yml pull
+docker compose -f docker-compose.prod.yml up -d
+```
+
+اگر پکیج GHCR خصوصی است، قبل از `pull` یک‌بار با GitHub PAT دارای دسترسی `read:packages` لاگین کنید:
+
+```bash
+echo "$GHCR_PAT" | docker login ghcr.io -u emadcheshmazar --password-stdin
 ```
 
 بعد از بالا آمدن:
@@ -42,20 +87,22 @@ http://<SERVER_IP>:3000
 ```
 
 - مایگریشن دیتابیس **خودکار** است (`prisma migrate deploy` داخل کانتینر `app`)
-- دیتابیس PostgreSQL داخل همان `docker-compose` بالا می‌آید
-- داده‌ها در volume با نام `postgres_data` نگه داشته می‌شوند
+- build روی GitHub انجام می‌شود و RAM سرور را درگیر نمی‌کند
+- volume دیتابیس در production خارجی است و تغییر پوشه یا نام Compose آن را عوض نمی‌کند
+- `docker compose down -v` نمی‌تواند external volume را حذف کند؛ با این حال `docker volume rm/prune` همچنان ممنوع است
 
 ### پورت دلخواه
 
 ```bash
-APP_PORT=8080 docker compose up --build -d
+APP_PORT=8080 docker compose -f docker-compose.prod.yml up -d
 ```
 
 ### به‌روزرسانی نسخه
 
 ```bash
 git pull
-docker compose up --build -d
+docker compose -f docker-compose.prod.yml pull
+docker compose -f docker-compose.prod.yml up -d
 ```
 
 مایگریشن‌های جدید در استارت کانتینر `app` اعمال می‌شوند.
@@ -67,7 +114,7 @@ docker compose up --build -d
 ```text
 ┌─────────────────────────────────────┐
 │  app (Next.js standalone)           │
-│  - build از Dockerfile              │
+│  - image آماده از GHCR              │
 │  - پورت: 3000 داخل کانتینر        │
 │  - migrate deploy در استارت       │
 └──────────────┬──────────────────────┘
@@ -76,7 +123,7 @@ docker compose up --build -d
 ┌─────────────────────────────────────┐
 │  postgres:16-alpine                 │
 │  - DB: daria_dong                   │
-│  - volume: postgres_data            │
+│  - external volume ثابت             │
 └─────────────────────────────────────┘
 ```
 
@@ -86,7 +133,9 @@ docker compose up --build -d
 | فایل                 | نقش                                   |
 | -------------------- | ------------------------------------- |
 | `Dockerfile`         | Multi-stage build؛ خروجی `standalone` |
-| `docker-compose.yml` | سرویس‌های `app` + `postgres`          |
+| `docker-compose.yml` | build و اجرای محلی                    |
+| `docker-compose.prod.yml` | اجرای سبک production بدون build |
+| `.github/workflows/docker-publish.yml` | build و انتشار ایمیج در GHCR |
 | `.env`               | تنظیمات محرمانه (در git نیست)         |
 | `prisma/migrations/` | مایگریشن‌های دیتابیس                  |
 
@@ -105,6 +154,11 @@ cp .env.example .env
 | متغیر                    | الزامی           | توضیح                                                                                                           |
 | ------------------------ | ---------------- | --------------------------------------------------------------------------------------------------------------- |
 | `DATABASE_URL`           | در Docker خودکار | در `docker-compose` برای سرویس `app` روی `postgres` داخلی ست می‌شود. اگر DB خارجی دارید، این مقدار را عوض کنید. |
+| `POSTGRES_VOLUME_NAME`   | **بله**          | نام volume موجود و پایدار دیتابیس روی سرور                                                                      |
+| `POSTGRES_PASSWORD`      | **بله**          | رمز PostgreSQL؛ برای URL داخلی از حروف/عدد و کاراکترهای URL-safe استفاده شود                                    |
+| `APP_MEMORY_LIMIT`       | اختیاری          | سقف RAM اپ؛ پیش‌فرض `384m`                                                                                       |
+| `POSTGRES_MEMORY_LIMIT`  | اختیاری          | سقف RAM PostgreSQL؛ پیش‌فرض `256m`                                                                               |
+| `NODE_MAX_OLD_SPACE_SIZE` | اختیاری         | سقف heap نود؛ پیش‌فرض `256` مگابایت                                                                              |
 | `SESSION_SECRET`         | **بله**          | رشته تصادفی بلند برای امضای کوکی‌ها. در production حتماً عوض شود.                                               |
 | `ADMIN_PASSWORD`         | **بله**          | رمز ورود ادمین مرکزی (`/admin/login`)                                                                           |
 | `APP_SHARED_PASSWORD`    | توصیه            | رمز مشترک ورود اعضای گروه (legacy)                                                                              |
@@ -128,11 +182,12 @@ cp .env.example .env
 
 - [ ] `SESSION_SECRET` تصادفی و قوی
 - [ ] `ADMIN_PASSWORD` عوض شده
-- [ ] رمز PostgreSQL در `docker-compose.yml` عوض شده (یا DB مدیریت‌شده جدا)
+- [ ] `POSTGRES_VOLUME_NAME` دقیقاً به volume فعلی دیتابیس اشاره می‌کند
+- [ ] رمز PostgreSQL امن است (یا DB مدیریت‌شده جدا استفاده می‌شود)
 - [ ] SMTP برای ارسال ایمیل ثبت‌نام تنظیم شده
 - [ ] HTTPS پشت Nginx / Traefik / Caddy
-- [ ] بکاپ دوره‌ای volume `postgres_data`
-- [ ] `docker compose down -v` **اجرا نشود** (دیتابیس پاک می‌شود)
+- [ ] بکاپ دوره‌ای و تست بازیابی فعال است
+- [ ] `docker volume prune` و `docker volume rm` برای volume دیتابیس اجرا نمی‌شود
 
 ### HTTPS (پیشنهاد)
 
@@ -165,32 +220,33 @@ Internet → Nginx (443) → app:3000
 
 ```bash
 # لاگ‌ها
-docker compose logs -f app
-docker compose logs -f postgres
+docker compose -f docker-compose.prod.yml logs -f app
+docker compose -f docker-compose.prod.yml logs -f postgres
 
 # وضعیت
-docker compose ps
+docker compose -f docker-compose.prod.yml ps
 
 # توقف (بدون حذف دیتا)
-docker compose down
+docker compose -f docker-compose.prod.yml down
 
 # seed اختیاری (داده mock نمی‌سازد)
-docker compose exec app npm run seed
+docker compose -f docker-compose.prod.yml exec app npm run seed
 
 # خالی کردن عمدی دیتابیس (خطرناک)
-docker compose exec app npm run db:clear
+docker compose -f docker-compose.prod.yml exec app npm run db:clear
 ```
 
 ### بکاپ دیتابیس
 
 ```bash
-docker compose exec postgres pg_dump -U postgres daria_dong > backup.sql
+mkdir -p backups
+docker compose -f docker-compose.prod.yml exec -T postgres pg_dump -U postgres daria_dong | gzip > "backups/dongyar-$(date +%F-%H%M).sql.gz"
 ```
 
 ### بازیابی
 
 ```bash
-cat backup.sql | docker compose exec -T postgres psql -U postgres daria_dong
+gunzip -c backup.sql.gz | docker compose -f docker-compose.prod.yml exec -T postgres psql -U postgres daria_dong
 ```
 
 ---
@@ -203,8 +259,10 @@ cat backup.sql | docker compose exec -T postgres psql -U postgres daria_dong
 | اپ بالا نمی‌آید | `docker compose logs app` — معمولاً خطای migrate یا env                |
 | ایمیل نمی‌رود   | `SMTP_*` را در `.env` چک کنید؛ برای Gmail از App Password استفاده کنید |
 | 502 از پروکسی   | مطمئن شوید `app` روی پورت درست listen می‌کند                           |
-| دیتا پاک شد     | احتمالاً `docker compose down -v` زده شده                              |
-| build کند است   | اولین build طبیعی است؛ بعدی‌ها cache می‌شوند                           |
+| دیتا خالی دیده می‌شود | `POSTGRES_VOLUME_NAME` را با mount کانتینر قبلی مقایسه کنید؛ volume اشتباه یعنی دیتابیس تازه |
+| اپ بعد از restart بالا نمی‌آید | `docker compose -f docker-compose.prod.yml logs app postgres` را بررسی کنید |
+| ایمیج pull نمی‌شود | visibility پکیج GHCR یا لاگین `docker login ghcr.io` را بررسی کنید |
+| build سرور را از پا می‌اندازد | در production فقط compose مخصوص production را اجرا کنید؛ این فایل build ندارد |
 
 
 ---

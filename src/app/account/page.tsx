@@ -1,10 +1,11 @@
 import { LogOut, PlusCircle, UsersRound } from "lucide-react";
 import { createAccountGroupAction, enterGroupAdminAction, enterMembershipAction, logoutAllAction, submitMembershipRequestAction } from "@/app/actions";
+import { AppShellNav } from "@/components/app-shell-nav";
 import { Badge } from "@/components/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { requireUser } from "@/lib/auth";
+import { getCurrentPerson, requireUser } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 
 export const dynamic = "force-dynamic";
@@ -17,6 +18,7 @@ const statusLabels = {
 
 export default async function AccountPage() {
   const user = await requireUser();
+  const activePerson = await getCurrentPerson();
   const [people, requests] = await Promise.all([
     prisma.person.findMany({
       where: { userId: user.id, type: "MEMBER", isActive: true },
@@ -36,25 +38,42 @@ export default async function AccountPage() {
   }
 
   return (
-    <main className="min-h-screen bg-[#f8faf2] text-slate-900">
-      <header className="border-b border-slate-200 bg-white/90">
-        <div className="mx-auto flex max-w-5xl flex-col gap-3 px-4 py-4 md:flex-row md:items-center md:justify-between">
-          <div>
+    <div className="min-h-screen bg-[#f8faf2] text-slate-900">
+      {activePerson ? (
+        <AppShellNav
+          prefix={`/${activePerson.group.slug}`}
+          personName={activePerson.name}
+          groupName={activePerson.group.name}
+        />
+      ) : (
+        <header className="border-b border-slate-200 bg-white/90">
+          <div className="mx-auto flex max-w-5xl flex-col gap-3 px-4 py-4 md:flex-row md:items-center md:justify-between">
+            <div>
+              <h1 className="text-2xl font-black">حساب کاربری</h1>
+              <p className="text-sm text-slate-600">
+                سلام {user.name}، <span dir="ltr">{user.email}</span>
+              </p>
+            </div>
+            <form action={logout}>
+              <Button variant="ghost">
+                <LogOut className="size-4" />
+                خروج
+              </Button>
+            </form>
+          </div>
+        </header>
+      )}
+
+      <main className="mx-auto max-w-5xl px-4 py-6">
+        {activePerson ? (
+          <div className="mb-6">
             <h1 className="text-2xl font-black">حساب کاربری</h1>
-            <p className="text-sm text-slate-600">
+            <p className="mt-1 text-sm text-slate-600">
               سلام {user.name}، <span dir="ltr">{user.email}</span>
             </p>
           </div>
-          <form action={logout}>
-            <Button variant="ghost">
-              <LogOut className="size-4" />
-              خروج
-            </Button>
-          </form>
-        </div>
-      </header>
-
-      <div className="mx-auto grid max-w-5xl gap-5 px-4 py-6 lg:grid-cols-[1fr_340px]">
+        ) : null}
+        <div className="grid gap-5 lg:grid-cols-[1fr_340px]">
         <section className="order-2 space-y-5 lg:order-1">
           <Card>
             <div className="mb-4 flex items-center gap-2">
@@ -139,7 +158,8 @@ export default async function AccountPage() {
             </form>
           </Card>
         </aside>
-      </div>
-    </main>
+        </div>
+      </main>
+    </div>
   );
 }

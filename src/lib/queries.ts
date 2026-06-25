@@ -1,5 +1,6 @@
 import { ChoreStatus, ChoreType, ExpenseSplitMode, ExpenseStatus, PaymentStatus, PersonType } from "@prisma/client";
 import { prisma } from "@/lib/db";
+import { buildPairSummaries, getEffectiveUnpaidAmount } from "@/lib/netting";
 
 const personPublicSelect = {
   id: true,
@@ -74,17 +75,19 @@ export async function getExpense(groupId: string, id: string) {
 export async function getDashboard(groupId: string, personId: string, isGroupAdmin = false) {
   const expenses = await getExpenses(groupId);
   const myDebts = expenses
-    .map((expense) => ({
-      expense,
-      participant: expense.participants.find((p) => p.personId === personId),
-    }))
+    .map((expense) => {
+      const participant = expense.participants.find((p) => p.personId === personId);
+      const amount = participant ? getEffectiveUnpaidAmount(participant) : 0;
+      return { expense, participant, amount };
+    })
     .filter(
       (item) =>
         item.participant &&
         item.participant.shareAmount != null &&
         item.expense.paidByPersonId !== personId &&
-        item.participant.paymentStatus === PaymentStatus.UNPAID,
+        item.amount > 0,
     );
+  const myReceivables = paidByMeFlat(expenses, personId);
   const pendingCustomShares = expenses.filter(
     (expense) =>
       expense.splitMode === ExpenseSplitMode.CUSTOM &&
@@ -103,24 +106,57 @@ export async function getDashboard(groupId: string, personId: string, isGroupAdm
     : [];
   const paidByMe = expenses.filter((e) => e.paidByPersonId === personId);
   const spentByMe = paidByMe.reduce((sum, e) => sum + e.amount, 0);
-  const debt = myDebts.reduce((sum, item) => sum + (item.participant?.shareAmount ?? 0), 0);
-  const receivable = paidByMe.reduce((sum, expense) => {
-    return (
-      sum +
-      expense.participants
-        .filter(
-          (p) =>
-            p.personId !== personId &&
-            p.shareAmount != null &&
-            p.paymentStatus === PaymentStatus.UNPAID,
-        )
-        .reduce((inner, p) => inner + (p.shareAmount ?? 0), 0)
-    );
-  }, 0);
+  const debt = myDebts.reduce((sum, item) => sum + item.amount, 0);
+  const receivable = myReceivables.reduce((sum, item) => sum + item.amount, 0);
+  const debtLines = myDebts.map((item) => ({
+    participantId: item.participant!.id,
+    expenseId: item.expense.id,
+    expenseTitle: item.expense.title,
+    expenseDate: item.expense.date,
+    amount: item.amount,
+    counterpartyId: item.expense.paidByPersonId,
+    counterpartyName: item.expense.paidBy.name,
+  }));
+  const receivableLines = myReceivables.map((item) => ({
+    participantId: item.participant.id,
+    expenseId: item.expense.id,
+    expenseTitle: item.expense.title,
+    expenseDate: item.expense.date,
+    amount: item.amount,
+    counterpartyId: item.participant.personId,
+    counterpartyName: item.participant.person.name,
+  }));
+  const pairSummaries = buildPairSummaries(debtLines, receivableLines);
+  const nettings = await prisma.nettingSettlement.findMany({
+    where: {
+      groupId,
+      OR: [{ initiatorPersonId: personId }, { counterpartyPersonId: personId }],
+    },
+    include: {
+      initiator: { select: personPublicSelect },
+      counterparty: { select: personPublicSelect },
+      items: {
+        include: {
+          participant: {
+            include: {
+              expense: { select: { id: true, title: true, date: true } },
+              person: { select: personPublicSelect },
+            },
+          },
+        },
+        orderBy: { amount: "desc" },
+      },
+    },
+    orderBy: { createdAt: "desc" },
+    take: 20,
+  });
 
   return {
     expenses,
     myDebts,
+    myReceivables,
+    pairSummaries,
+    nettings,
     pendingCustomShares,
     pendingGuestShares,
     paidByMe,
@@ -129,6 +165,20 @@ export async function getDashboard(groupId: string, personId: string, isGroupAdm
     receivable,
     balance: receivable - debt,
   };
+}
+
+function paidByMeFlat(expenses: Awaited<ReturnType<typeof getExpenses>>, personId: string) {
+  return expenses
+    .filter((expense) => expense.paidByPersonId === personId)
+    .flatMap((expense) =>
+      expense.participants
+        .filter((participant) => participant.personId !== personId)
+        .map((participant) => {
+          const amount = getEffectiveUnpaidAmount(participant);
+          return amount > 0 ? { expense, participant, amount } : null;
+        })
+        .filter((item): item is NonNullable<typeof item> => item !== null),
+    );
 }
 
 export async function getAdminGroups() {

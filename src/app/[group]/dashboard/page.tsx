@@ -1,13 +1,13 @@
 import Link from "next/link";
 import { ArrowLeft, Coffee, HandCoins, ReceiptText, WalletCards } from "lucide-react";
+import { DashboardSettlementSections } from "@/components/dashboard-settlement-sections";
 import { AppShell } from "@/components/nav";
 import { Badge } from "@/components/badge";
 import { Card } from "@/components/ui/card";
-import { CopyableText } from "@/components/copyable-text";
-import { MarkPaidButton } from "@/components/payment-buttons";
 import { requirePerson } from "@/lib/auth";
 import { getDashboard } from "@/lib/queries";
 import { formatDate, formatExpenseAmount, formatToman } from "@/lib/utils";
+import { getEffectiveUnpaidAmount } from "@/lib/netting";
 
 export const dynamic = "force-dynamic";
 
@@ -88,50 +88,101 @@ export default async function DashboardPage({ params }: { params: Promise<{ grou
           </div>
         </Card>
       ) : null}
-      <section className="mt-6 grid gap-5 lg:grid-cols-2">
-        <Card>
-          <h2 className="mb-4 text-xl font-black">بدهی‌های من</h2>
-          <div className="space-y-3">
-            {data.myDebts.length ? (
-              data.myDebts.map(({ expense, participant }) => (
-                <div key={expense.id} className="rounded-2xl border border-slate-100 p-4">
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <Link className="font-black text-emerald-800" href={`${prefix}/expenses/${expense.id}`}>{expense.title}</Link>
-                      <p className="text-sm text-slate-500">به {expense.paidBy.name}، {formatDate(expense.date)}</p>
-                      {expense.cardNumber ? (
-                        <div className="mt-2">
-                          <CopyableText value={expense.cardNumber} label="شماره کارت:" />
-                        </div>
-                      ) : expense.paymentNote ? (
-                        <p className="mt-2 text-sm text-slate-700">{expense.paymentNote}</p>
-                      ) : null}
-                    </div>
-                    <Badge tone="amber">{formatToman(participant?.shareAmount ?? 0)}</Badge>
-                  </div>
-                  <div className="mt-3">
-                    <MarkPaidButton
-                      groupSlug={person.group.slug}
-                      expenseId={expense.id}
-                      payer={expense.paidBy.name}
-                      amount={participant?.shareAmount ?? 0}
-                      note={expense.cardNumber || expense.paymentNote}
-                    />
-                  </div>
-                </div>
-              ))
-            ) : (
-              <p className="rounded-2xl bg-emerald-50 p-5 text-sm font-bold text-emerald-800">فعلا بدهی باز نداری. چه سبک!</p>
-            )}
-          </div>
-        </Card>
+      <DashboardSettlementSections
+        groupSlug={person.group.slug}
+        personId={person.id}
+        personName={person.name}
+        myDebts={data.myDebts.map(({ expense, participant, amount }) => ({
+          expense: {
+            id: expense.id,
+            title: expense.title,
+            date: expense.date.toISOString(),
+            cardNumber: expense.cardNumber,
+            paymentNote: expense.paymentNote,
+            paidBy: { name: expense.paidBy.name },
+          },
+          participant: {
+            id: participant!.id,
+            shareAmount: participant!.shareAmount,
+            nettedAmount: participant!.nettedAmount,
+          },
+          amount,
+        }))}
+        myReceivables={data.myReceivables.map(({ expense, participant, amount }) => ({
+          expense: {
+            id: expense.id,
+            title: expense.title,
+            date: expense.date.toISOString(),
+          },
+          participant: {
+            id: participant.id,
+            person: { name: participant.person.name },
+            shareAmount: participant.shareAmount,
+            nettedAmount: participant.nettedAmount,
+          },
+          amount,
+        }))}
+        pairSummaries={data.pairSummaries.map((pair) => ({
+          counterpartyId: pair.counterpartyId,
+          counterpartyName: pair.counterpartyName,
+          debtItems: pair.debtItems.map((item) => ({
+            expenseId: item.expenseId,
+            expenseTitle: item.expenseTitle,
+            amount: item.amount,
+          })),
+          receivableItems: pair.receivableItems.map((item) => ({
+            expenseId: item.expenseId,
+            expenseTitle: item.expenseTitle,
+            amount: item.amount,
+          })),
+          openAccountCount: pair.openAccountCount,
+          totalDebt: pair.totalDebt,
+          totalReceivable: pair.totalReceivable,
+          nettedPreview: pair.nettedPreview,
+          remainingDebt: pair.remainingDebt,
+          remainingReceivable: pair.remainingReceivable,
+          canNet: pair.canNet,
+        }))}
+        nettings={data.nettings.map((record) => ({
+          id: record.id,
+          createdAt: record.createdAt.toISOString(),
+          nettedAmount: record.nettedAmount,
+          initiator: { id: record.initiator.id, name: record.initiator.name },
+          counterparty: { id: record.counterparty.id, name: record.counterparty.name },
+          initiatorDebtBefore: record.initiatorDebtBefore,
+          initiatorReceivableBefore: record.initiatorReceivableBefore,
+          initiatorDebtAfter: record.initiatorDebtAfter,
+          initiatorReceivableAfter: record.initiatorReceivableAfter,
+          counterpartyDebtBefore: record.counterpartyDebtBefore,
+          counterpartyReceivableBefore: record.counterpartyReceivableBefore,
+          counterpartyDebtAfter: record.counterpartyDebtAfter,
+          counterpartyReceivableAfter: record.counterpartyReceivableAfter,
+          items: record.items.map((item) => ({
+            amount: item.amount,
+            entryType: item.entryType,
+            participant: {
+              expense: {
+                id: item.participant.expense.id,
+                title: item.participant.expense.title,
+                date: item.participant.expense.date.toISOString(),
+              },
+              person: { name: item.participant.person.name },
+            },
+          })),
+        }))}
+      />
+      <section className="mt-6 grid gap-5 lg:grid-cols-1">
         <Card>
           <h2 className="mb-4 text-xl font-black">خرج‌هایی که من ثبت کردم</h2>
           <div className="space-y-3">
             {data.paidByMe.length ? (
               data.paidByMe.map((expense) => {
-                const unpaid = expense.participants.filter((p) => p.personId !== person.id && p.paymentStatus === "UNPAID");
-                const paid = expense.participants.filter((p) => p.paymentStatus === "PAID");
+                const unpaid = expense.participants.filter(
+                  (p) => p.personId !== person.id && getEffectiveUnpaidAmount(p) > 0,
+                );
+                const paid = expense.participants.filter(
+                  (p) => p.personId !== person.id && getEffectiveUnpaidAmount(p) === 0 && p.shareAmount != null,
+                );
                 return (
                   <div key={expense.id} className="rounded-2xl border border-slate-100 p-4">
                     <div className="flex items-center justify-between gap-3">

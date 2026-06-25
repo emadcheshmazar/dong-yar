@@ -26,6 +26,12 @@ enum ExpenseSplitMode {
 enum PaymentStatus {
   PAID
   UNPAID
+  NETTED
+}
+
+enum NettingEntryType {
+  INITIATOR_OWES
+  COUNTERPARTY_OWES
 }
 
 enum ChoreType {
@@ -100,6 +106,7 @@ model Group {
   expenses           Expense[]
   chores             Chore[]
   membershipRequests MembershipRequest[]
+  nettingSettlements NettingSettlement[]
 }
 
 model Person {
@@ -123,7 +130,9 @@ model Person {
   markedPayments  ExpenseParticipant[] @relation("MarkedBy")
   assignedChores  Chore[]              @relation("ChoreAssignedBy")
   choreEntries    ChoreParticipant[]   @relation("ChoreParticipantPerson")
-  reviewedRequests MembershipRequest[]  @relation("ReviewedBy")
+  reviewedRequests        MembershipRequest[]  @relation("ReviewedBy")
+  initiatedNettings       NettingSettlement[]  @relation("NettingInitiator")
+  counterpartyNettings    NettingSettlement[]  @relation("NettingCounterparty")
 
   @@unique([groupId, username])
   @@unique([groupId, userId])
@@ -209,20 +218,65 @@ model ChoreParticipant {
 }
 
 model ExpenseParticipant {
-  id               String        @id @default(cuid())
-  expenseId        String
-  personId         String
-  shareAmount      Int?
-  shareEnteredAt   DateTime?
-  paymentStatus    PaymentStatus @default(UNPAID)
-  paidAt           DateTime?
-  markedByPersonId String?
-  createdAt        DateTime      @default(now())
-  updatedAt        DateTime      @updatedAt
+  id                    String        @id @default(cuid())
+  expenseId             String
+  personId              String
+  shareAmount           Int?
+  shareEnteredAt        DateTime?
+  paymentStatus         PaymentStatus @default(UNPAID)
+  nettedAmount          Int           @default(0)
+  paidAt                DateTime?
+  markedByPersonId      String?
+  nettingSettlementId   String?
+  createdAt             DateTime      @default(now())
+  updatedAt             DateTime      @updatedAt
 
-  expense        Expense @relation(fields: [expenseId], references: [id], onDelete: Cascade)
-  person         Person  @relation("ParticipantPerson", fields: [personId], references: [id])
-  markedByPerson Person? @relation("MarkedBy", fields: [markedByPersonId], references: [id])
+  expense             Expense              @relation(fields: [expenseId], references: [id], onDelete: Cascade)
+  person              Person               @relation("ParticipantPerson", fields: [personId], references: [id])
+  markedByPerson      Person?              @relation("MarkedBy", fields: [markedByPersonId], references: [id])
+  nettingSettlement   NettingSettlement?   @relation(fields: [nettingSettlementId], references: [id], onDelete: SetNull)
+  nettingItems        NettingSettlementItem[]
 
   @@unique([expenseId, personId])
+}
+
+model NettingSettlement {
+  id                             String   @id @default(cuid())
+  groupId                        String
+  initiatorPersonId              String
+  counterpartyPersonId           String
+  nettedAmount                   Int
+  initiatorDebtBefore            Int
+  initiatorReceivableBefore      Int
+  initiatorDebtAfter             Int
+  initiatorReceivableAfter       Int
+  counterpartyDebtBefore         Int
+  counterpartyReceivableBefore   Int
+  counterpartyDebtAfter          Int
+  counterpartyReceivableAfter    Int
+  createdAt                      DateTime @default(now())
+
+  group        Group                   @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  initiator    Person                  @relation("NettingInitiator", fields: [initiatorPersonId], references: [id])
+  counterparty Person                  @relation("NettingCounterparty", fields: [counterpartyPersonId], references: [id])
+  items        NettingSettlementItem[]
+  participants ExpenseParticipant[]
+
+  @@index([groupId, createdAt])
+  @@index([initiatorPersonId])
+  @@index([counterpartyPersonId])
+}
+
+model NettingSettlementItem {
+  id            String           @id @default(cuid())
+  settlementId  String
+  participantId String
+  amount        Int
+  entryType     NettingEntryType
+
+  settlement  NettingSettlement  @relation(fields: [settlementId], references: [id], onDelete: Cascade)
+  participant ExpenseParticipant @relation(fields: [participantId], references: [id], onDelete: Cascade)
+
+  @@index([settlementId])
+  @@index([participantId])
 }

@@ -1359,6 +1359,12 @@ export async function markPaidAction(formData: FormData) {
     revalidatePath(`/${groupSlug}/expenses/${expenseId}`);
     return;
   }
+  const remainingAmount = Math.max(0, participant.shareAmount - participant.nettedAmount);
+  if (remainingAmount <= 0 || participant.paymentStatus === PaymentStatus.NETTED) {
+    await setFlashToast("error", "این دنگ قبلاً تسویه شده است.");
+    revalidatePath(`/${groupSlug}/expenses/${expenseId}`);
+    return;
+  }
   try {
     await prisma.expenseParticipant.update({
       where: { id: participant.id },
@@ -1412,4 +1418,158 @@ export async function toggleGuestPaymentAction(formData: FormData) {
     `پرداخت ${participant.person.name} برای ${participant.expense.title} ${next === PaymentStatus.PAID ? "ثبت شد" : "باز شد"}.`,
   );
   revalidatePath(`/${groupSlug}/expenses/${participant.expenseId}`);
+}
+
+export async function confirmNettingAction(formData: FormData) {
+  const groupSlug = normalizeSlug(String(formData.get("groupSlug") ?? ""));
+  const counterpartyPersonId = String(formData.get("counterpartyPersonId") ?? "");
+  const current = await requirePerson(groupSlug);
+
+  if (!counterpartyPersonId || counterpartyPersonId === current.id) {
+    await setFlashToast("error", "تهاتر با این شخص امکان‌پذیر نیست.");
+    revalidatePath(`/${groupSlug}/dashboard`);
+    return;
+  }
+
+  const counterparty = await prisma.person.findFirst({
+    where: {
+      id: counterpartyPersonId,
+      groupId: current.groupId,
+      type: PersonType.MEMBER,
+      isActive: true,
+    },
+  });
+  if (!counterparty) {
+    await setFlashToast("error", "عضو گروه پیدا نشد.");
+    revalidatePath(`/${groupSlug}/dashboard`);
+    return;
+  }
+
+  const expenses = await prisma.expense.findMany({
+    where: { groupId: current.groupId, status: ExpenseStatus.ACTIVE },
+    include: {
+      paidBy: { select: { id: true, name: true } },
+      participants: true,
+    },
+    orderBy: { date: "asc" },
+  });
+
+  const { allocateNetting, buildPairSummaries, getEffectiveUnpaidAmount } = await import("@/lib/netting");
+
+  const debtLines = expenses
+    .map((expense) => {
+      const participant = expense.participants.find((item) => item.personId === current.id);
+      const amount = participant ? getEffectiveUnpaidAmount(participant) : 0;
+      if (!participant || expense.paidByPersonId === current.id || amount <= 0) return null;
+      if (expense.paidByPersonId !== counterpartyPersonId) return null;
+      return {
+        participantId: participant.id,
+        expenseId: expense.id,
+        expenseTitle: expense.title,
+        expenseDate: expense.date,
+        amount,
+        counterpartyId: expense.paidByPersonId,
+        counterpartyName: expense.paidBy.name,
+      };
+    })
+    .filter((item): item is NonNullable<typeof item> => item !== null);
+
+  const receivableLines = expenses
+    .filter((expense) => expense.paidByPersonId === current.id)
+    .flatMap((expense) =>
+      expense.participants
+        .filter((participant) => participant.personId === counterpartyPersonId)
+        .map((participant) => {
+          const amount = getEffectiveUnpaidAmount(participant);
+          if (amount <= 0) return null;
+          return {
+            participantId: participant.id,
+            expenseId: expense.id,
+            expenseTitle: expense.title,
+            expenseDate: expense.date,
+            amount,
+            counterpartyId: participant.personId,
+            counterpartyName: counterparty.name,
+          };
+        })
+        .filter((item): item is NonNullable<typeof item> => item !== null),
+    );
+
+  const [pairSummary] = buildPairSummaries(debtLines, receivableLines).filter(
+    (item) => item.counterpartyId === counterpartyPersonId,
+  );
+
+  if (!pairSummary || !pairSummary.canNet) {
+    await setFlashToast(
+      "error",
+      "برای تهاتر باید حداقل دو حساب باز با این شخص داشته باشی و بدهی/طلب دوطرفه وجود داشته باشد.",
+    );
+    revalidatePath(`/${groupSlug}/dashboard`);
+    return;
+  }
+
+  const allocations = allocateNetting(pairSummary.debtItems, pairSummary.receivableItems, pairSummary.nettedPreview);
+
+  try {
+    await prisma.$transaction(async (tx) => {
+      const settlement = await tx.nettingSettlement.create({
+        data: {
+          groupId: current.groupId,
+          initiatorPersonId: current.id,
+          counterpartyPersonId,
+          nettedAmount: pairSummary.nettedPreview,
+          initiatorDebtBefore: pairSummary.totalDebt,
+          initiatorReceivableBefore: pairSummary.totalReceivable,
+          initiatorDebtAfter: pairSummary.remainingDebt,
+          initiatorReceivableAfter: pairSummary.remainingReceivable,
+          counterpartyDebtBefore: pairSummary.totalReceivable,
+          counterpartyReceivableBefore: pairSummary.totalDebt,
+          counterpartyDebtAfter: pairSummary.remainingReceivable,
+          counterpartyReceivableAfter: pairSummary.remainingDebt,
+        },
+      });
+
+      for (const allocation of allocations) {
+        const participant = await tx.expenseParticipant.findUnique({
+          where: { id: allocation.participantId },
+        });
+        if (!participant || participant.shareAmount == null) {
+          throw new Error("participant missing");
+        }
+        const nextNettedAmount = participant.nettedAmount + allocation.addNetted;
+        if (nextNettedAmount > participant.shareAmount) {
+          throw new Error("invalid netting amount");
+        }
+        await tx.expenseParticipant.update({
+          where: { id: allocation.participantId },
+          data: {
+            nettedAmount: nextNettedAmount,
+            paymentStatus:
+              allocation.markFullyNetted && nextNettedAmount === participant.shareAmount
+                ? PaymentStatus.NETTED
+                : PaymentStatus.UNPAID,
+            nettingSettlementId: settlement.id,
+          },
+        });
+        await tx.nettingSettlementItem.create({
+          data: {
+            settlementId: settlement.id,
+            participantId: allocation.participantId,
+            amount: allocation.amount,
+            entryType: allocation.entryType,
+          },
+        });
+      }
+    });
+  } catch {
+    await setFlashToast("error", "ثبت تهاتر انجام نشد.");
+    revalidatePath(`/${groupSlug}/dashboard`);
+    return;
+  }
+
+  await setFlashToast(
+    "success",
+    `تهاتر با ${counterparty.name} ثبت شد. ${pairSummary.nettedPreview.toLocaleString("fa-IR")} تومان سر به سر شد.`,
+  );
+  revalidatePath(`/${groupSlug}/dashboard`);
 }

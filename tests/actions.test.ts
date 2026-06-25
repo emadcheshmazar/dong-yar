@@ -26,6 +26,8 @@ const mocks = vi.hoisted(() => {
       membershipRequest: model(),
       expense: model(),
       expenseParticipant: model(),
+      nettingSettlement: model(),
+      nettingSettlementItem: model(),
       $transaction: vi.fn(),
     },
     redirect: vi.fn(),
@@ -149,6 +151,7 @@ describe("action coverage contract", () => {
       "adminLoginAction",
       "cancelChoreAction",
       "completeChoreAction",
+      "confirmNettingAction",
       "createAccountGroupAction",
       "createChoreAction",
       "createExpenseAction",
@@ -600,6 +603,8 @@ describe("expense, share, and payment actions", () => {
     mocks.prisma.expenseParticipant.findFirst.mockResolvedValue({
       id: "participant-1",
       shareAmount: 10_000,
+      nettedAmount: 0,
+      paymentStatus: "UNPAID",
       expense: { id: "expense-1", title: "Team lunch", paidByPersonId: "person-2" },
     });
 
@@ -628,5 +633,24 @@ describe("expense, share, and payment actions", () => {
     expect(mocks.prisma.expenseParticipant.update).toHaveBeenCalledWith(expect.objectContaining({
       data: expect.objectContaining({ paymentStatus: "PAID", markedByPersonId: member.id }),
     }));
+  });
+
+  it("confirmNettingAction rejects netting when the pair is not eligible", async () => {
+    mocks.prisma.person.findFirst.mockResolvedValueOnce({ id: "person-2", groupId: group.id, type: "MEMBER", isActive: true });
+    mocks.prisma.expense.findMany.mockResolvedValue([
+      {
+        id: "expense-1",
+        title: "Lunch",
+        date: new Date("2026-06-01"),
+        paidByPersonId: "person-2",
+        paidBy: { id: "person-2", name: "Reza" },
+        participants: [{ id: "participant-1", personId: member.id, shareAmount: 100, nettedAmount: 0, paymentStatus: "UNPAID" }],
+      },
+    ]);
+
+    await actions.confirmNettingAction(form({ groupSlug: group.slug, counterpartyPersonId: "person-2" }));
+
+    expect(mocks.setFlashToast).toHaveBeenCalledWith("error", expect.stringContaining("تهاتر"));
+    expect(mocks.prisma.$transaction).not.toHaveBeenCalled();
   });
 });

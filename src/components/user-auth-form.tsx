@@ -2,13 +2,13 @@
 
 import { useActionState, useEffect, useState } from "react";
 import { KeyRound, Mail, ShieldCheck, UserRound } from "lucide-react";
-import { sendEmailCodeAction, signupUserAction, userLoginAction } from "@/app/actions";
+import { resetPasswordAction, sendEmailCodeAction, signupUserAction, userLoginAction } from "@/app/actions";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { PasswordInput } from "@/components/ui/password-input";
 import { useToast } from "@/components/ui/toast";
 
-type AuthMode = "login" | "signup";
+type AuthMode = "login" | "signup" | "reset";
 
 export function UserAuthForm({
   initialMode = "login",
@@ -21,8 +21,12 @@ export function UserAuthForm({
   const [loginState, loginAction, loginPending] = useActionState(userLoginAction, null);
   const [codeState, codeAction, codePending] = useActionState(sendEmailCodeAction, null);
   const [signupState, signupAction, signupPending] = useActionState(signupUserAction, null);
+  const [resetCodeState, resetCodeAction, resetCodePending] = useActionState(sendEmailCodeAction, null);
+  const [resetPasswordState, resetPasswordActionForm, resetPasswordPending] = useActionState(resetPasswordAction, null);
   const [email, setEmail] = useState("");
+  const [resetEmail, setResetEmail] = useState("");
   const isCodeStep = mode === "signup" && Boolean(codeState && "success" in codeState && codeState.success);
+  const isResetCodeStep = mode === "reset" && Boolean(resetCodeState && "success" in resetCodeState && resetCodeState.success);
   const { showToast } = useToast();
 
   useEffect(() => {
@@ -36,6 +40,14 @@ export function UserAuthForm({
   useEffect(() => {
     if (signupState?.toast) showToast(signupState.toast);
   }, [signupState, showToast]);
+
+  useEffect(() => {
+    if (resetCodeState?.toast) showToast(resetCodeState.toast);
+  }, [resetCodeState, showToast]);
+
+  useEffect(() => {
+    if (resetPasswordState?.toast) showToast(resetPasswordState.toast);
+  }, [resetPasswordState, showToast]);
 
   return (
     <div className="space-y-5">
@@ -80,10 +92,82 @@ export function UserAuthForm({
             </div>
           </label>
           {loginState?.error ? <p className="rounded-xl bg-rose-50 p-3 text-sm font-semibold text-rose-700">{loginState.error}</p> : null}
+          <button
+            type="button"
+            className="text-sm font-bold text-emerald-700 hover:text-emerald-900"
+            onClick={() => setMode("reset")}
+          >
+            رمز عبور را فراموش کرده‌ام
+          </button>
           <Button className="w-full" size="lg" disabled={loginPending}>
             {loginPending ? "در حال ورود..." : "ورود"}
           </Button>
         </form>
+      ) : mode === "reset" ? (
+        !isResetCodeStep ? (
+          <form action={resetCodeAction} className="space-y-4">
+            <input type="hidden" name="purpose" value="PASSWORD_RESET" />
+            <label className="block space-y-2">
+              <span className="text-sm font-bold text-slate-700">ایمیل حساب</span>
+              <div className="relative">
+                <Mail className="absolute right-3 top-3 size-4 text-slate-400" />
+                <Input
+                  name="email"
+                  type="email"
+                  dir="ltr"
+                  className="pr-10 text-left"
+                  placeholder="you@example.com"
+                  value={resetEmail}
+                  onChange={(event) => setResetEmail(event.target.value)}
+                  required
+                />
+              </div>
+            </label>
+            {resetCodeState && "error" in resetCodeState ? <p className="rounded-xl bg-rose-50 p-3 text-sm font-semibold text-rose-700">{resetCodeState.error}</p> : null}
+            <Button className="w-full" size="lg" disabled={resetCodePending}>
+              {resetCodePending ? "در حال ارسال..." : "ارسال کد بازیابی"}
+            </Button>
+            <Button type="button" variant="ghost" className="w-full" onClick={() => setMode("login")}>
+              بازگشت به ورود
+            </Button>
+          </form>
+        ) : (
+          <form action={resetPasswordActionForm} className="space-y-4">
+            <input type="hidden" name="email" value={resetEmail} />
+            <div className="rounded-2xl bg-emerald-50 p-4 text-sm font-bold text-emerald-900">
+              کد بازیابی به <span dir="ltr">{resetEmail}</span> ارسال شد.
+              {resetCodeState && "devCode" in resetCodeState && resetCodeState.devCode ? <span className="mt-2 block">کد توسعه: {resetCodeState.devCode}</span> : null}
+            </div>
+            <label className="block space-y-2">
+              <span className="text-sm font-bold text-slate-700">کد ۶ رقمی</span>
+              <div className="relative">
+                <ShieldCheck className="absolute right-3 top-3 size-4 text-slate-400" />
+                <Input name="code" inputMode="numeric" dir="ltr" className="pr-10 text-left" placeholder="123456" required />
+              </div>
+            </label>
+            <label className="block space-y-2">
+              <span className="text-sm font-bold text-slate-700">رمز جدید</span>
+              <div className="relative">
+                <KeyRound className="absolute right-3 top-3 size-4 text-slate-400" />
+                <PasswordInput name="password" className="pr-10" placeholder="حداقل ۶ کاراکتر" required />
+              </div>
+            </label>
+            <label className="block space-y-2">
+              <span className="text-sm font-bold text-slate-700">تکرار رمز جدید</span>
+              <div className="relative">
+                <KeyRound className="absolute right-3 top-3 size-4 text-slate-400" />
+                <PasswordInput name="confirmPassword" className="pr-10" placeholder="تکرار رمز جدید" required />
+              </div>
+            </label>
+            {resetPasswordState?.error ? <p className="rounded-xl bg-rose-50 p-3 text-sm font-semibold text-rose-700">{resetPasswordState.error}</p> : null}
+            <Button className="w-full" size="lg" disabled={resetPasswordPending}>
+              {resetPasswordPending ? "در حال تغییر رمز..." : "ثبت رمز جدید"}
+            </Button>
+            <Button type="button" variant="ghost" className="w-full" onClick={() => setMode("login")}>
+              بازگشت به ورود
+            </Button>
+          </form>
+        )
       ) : !isCodeStep ? (
         <form action={codeAction} className="space-y-4">
           <input type="hidden" name="purpose" value="USER_SIGNUP" />

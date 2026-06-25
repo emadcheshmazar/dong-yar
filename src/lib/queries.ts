@@ -1,4 +1,4 @@
-import { ExpenseSplitMode, ExpenseStatus, PaymentStatus, PersonType } from "@prisma/client";
+import { ChoreStatus, ChoreType, ExpenseSplitMode, ExpenseStatus, PaymentStatus, PersonType } from "@prisma/client";
 import { prisma } from "@/lib/db";
 
 const personPublicSelect = {
@@ -172,4 +172,73 @@ export async function getAdminGroup(slug: string) {
       },
     },
   });
+}
+
+export async function getChoreAdminPanel(groupId: string) {
+  const [members, chores] = await Promise.all([
+    getActiveMembers(groupId),
+    prisma.chore.findMany({
+      where: { groupId, status: { not: ChoreStatus.CANCELLED } },
+      include: {
+        assignedBy: { select: personPublicSelect },
+        people: {
+          include: { person: { select: personPublicSelect } },
+          orderBy: { createdAt: "asc" },
+        },
+      },
+      orderBy: [{ scheduledFor: "desc" }, { createdAt: "desc" }],
+    }),
+  ]);
+  const typeKeys = Object.values(ChoreType);
+  const rows = members.map((member) => {
+    const completedEntries = chores
+      .filter((chore) => chore.status === ChoreStatus.COMPLETED)
+      .flatMap((chore) => chore.people.map((entry) => ({ chore, entry })))
+      .filter(({ entry }) => entry.personId === member.id);
+    const byType = Object.fromEntries(typeKeys.map((type) => [type, 0])) as Record<ChoreType, number>;
+    for (const { chore, entry } of completedEntries) {
+      byType[chore.type] += entry.score;
+    }
+    const totalScore = completedEntries.reduce((sum, { entry }) => sum + entry.score, 0);
+    const assignedCount = chores.filter(
+      (chore) => chore.status === ChoreStatus.ASSIGNED && chore.people.some((entry) => entry.personId === member.id),
+    ).length;
+    const lastDone = completedEntries.sort(
+      (a, b) => b.chore.scheduledFor.getTime() - a.chore.scheduledFor.getTime(),
+    )[0]?.chore ?? null;
+    return {
+      person: member,
+      totalScore,
+      byType,
+      assignedCount,
+      lastDone,
+      completedCount: completedEntries.length,
+    };
+  });
+  const scoreRows = rows.sort(
+    (a, b) =>
+      a.totalScore - b.totalScore ||
+      a.assignedCount - b.assignedCount ||
+      a.person.createdAt.getTime() - b.person.createdAt.getTime(),
+  );
+  const suggestions = Object.fromEntries(
+    typeKeys.map((type) => [
+      type,
+      [...rows].sort(
+        (a, b) =>
+          a.byType[type] - b.byType[type] ||
+          a.totalScore - b.totalScore ||
+          a.assignedCount - b.assignedCount ||
+          a.person.createdAt.getTime() - b.person.createdAt.getTime(),
+      )[0] ?? null,
+    ]),
+  ) as Record<ChoreType, (typeof rows)[number] | null>;
+
+  return {
+    members,
+    scoreRows,
+    suggestions,
+    assignedChores: chores.filter((chore) => chore.status === ChoreStatus.ASSIGNED),
+    history: chores.filter((chore) => chore.status === ChoreStatus.COMPLETED).slice(0, 24),
+  };
 }

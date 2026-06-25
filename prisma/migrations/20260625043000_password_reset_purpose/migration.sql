@@ -1,0 +1,1 @@
+ALTER TYPE "EmailVerificationPurpose" ADD VALUE IF NOT EXISTS 'PASSWORD_RESET';

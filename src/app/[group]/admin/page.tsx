@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { LogOut, Pencil, PlusCircle, UserPlus, UsersRound } from "lucide-react";
+import { ClipboardList, LogOut, Pencil, PlusCircle, UserPlus, UsersRound } from "lucide-react";
 import { deleteExpenseAction, deletePersonAction, logoutAllAction, upsertPersonAction } from "@/app/actions";
 import { MembershipAdminCard } from "@/components/admin/membership-admin-card";
 import { Badge } from "@/components/badge";
@@ -35,6 +35,10 @@ export default async function GroupAdminPage({ params }: { params: Promise<{ gro
             <p className="text-sm text-slate-600">سلام {currentAdmin.name}، فقط همین گروه در اختیار توست.</p>
           </div>
           <div className="flex flex-wrap gap-2">
+            <Link className="inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 text-sm font-bold text-white" href={`/${group.slug}/admin/chores`}>
+              <ClipboardList className="size-4" />
+              پنل کارها
+            </Link>
             <Link className="inline-flex h-10 items-center justify-center rounded-xl bg-slate-900 px-4 text-sm font-bold text-white" href="/account">
               حساب کاربری
             </Link>

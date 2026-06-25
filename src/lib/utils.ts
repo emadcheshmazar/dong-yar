@@ -1,6 +1,6 @@
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
-import { ExpenseSplitMode } from "@prisma/client";
+import { ChoreIntensity, ChoreStatus, ChoreType, ExpenseSplitMode } from "@prisma/client";
 import {
   gregorianToJalaliParts,
   jalaliPartsToGregorianISO,
@@ -110,4 +110,30 @@ export function formatExpenseAmount(expense: {
 export const splitModeLabels: Record<ExpenseSplitMode, string> = {
   [ExpenseSplitMode.EQUAL]: "مساوی",
   [ExpenseSplitMode.CUSTOM]: "سفارشی",
+};
+
+export const choreTypeLabels: Record<ChoreType, string> = {
+  [ChoreType.COOKING]: "آشپزی",
+  [ChoreType.DISHES]: "ظرف شستن",
+  [ChoreType.SHOPPING]: "خرید",
+  [ChoreType.CLEANING]: "تمیزکاری",
+  [ChoreType.OTHER]: "سایر",
+};
+
+export const choreIntensityLabels: Record<ChoreIntensity, string> = {
+  [ChoreIntensity.LIGHT]: "کمک سبک",
+  [ChoreIntensity.NORMAL]: "متوسط",
+  [ChoreIntensity.HEAVY]: "سنگین",
+};
+
+export const choreStatusLabels: Record<ChoreStatus, string> = {
+  [ChoreStatus.ASSIGNED]: "اساین‌شده",
+  [ChoreStatus.COMPLETED]: "انجام‌شده",
+  [ChoreStatus.CANCELLED]: "لغوشده",
+};
+
+export const choreIntensityScores: Record<ChoreIntensity, number> = {
+  [ChoreIntensity.LIGHT]: 1,
+  [ChoreIntensity.NORMAL]: 2,
+  [ChoreIntensity.HEAVY]: 3,
 };

@@ -20,6 +20,8 @@ const mocks = vi.hoisted(() => {
       user: model(),
       group: model(),
       person: model(),
+      chore: model(),
+      choreParticipant: model(),
       emailVerificationCode: model(),
       membershipRequest: model(),
       expense: model(),
@@ -131,6 +133,8 @@ beforeEach(() => {
   mocks.requireUser.mockResolvedValue(user);
   mocks.requirePerson.mockResolvedValue(member);
   mocks.requireGroupAdmin.mockResolvedValue(groupAdmin);
+  mocks.prisma.chore.count.mockResolvedValue(0);
+  mocks.prisma.choreParticipant.count.mockResolvedValue(0);
   mocks.prisma.$transaction.mockImplementation(async (operation: unknown) => {
     if (typeof operation === "function") {
       return (operation as (tx: typeof mocks.prisma) => Promise<unknown>)(mocks.prisma);
@@ -143,7 +147,10 @@ describe("action coverage contract", () => {
   it("keeps every exported server action represented by this suite", () => {
     expect(Object.keys(actions).filter((name) => name.endsWith("Action")).sort()).toEqual([
       "adminLoginAction",
+      "cancelChoreAction",
+      "completeChoreAction",
       "createAccountGroupAction",
+      "createChoreAction",
       "createExpenseAction",
       "deleteExpenseAction",
       "deleteGroupAction",
@@ -155,6 +162,7 @@ describe("action coverage contract", () => {
       "loginAction",
       "logoutAllAction",
       "markPaidAction",
+      "resetPasswordAction",
       "reviewMembershipRequestAction",
       "selectGroupAction",
       "sendEmailCodeAction",
@@ -180,6 +188,19 @@ describe("authentication and account actions", () => {
     }));
     expect(mocks.prisma.emailVerificationCode.create).toHaveBeenCalledOnce();
     expect(mocks.sendVerificationEmail).toHaveBeenCalledWith(expect.objectContaining({ email: "new@example.com" }));
+  });
+
+  it("sendEmailCodeAction sends password reset codes only for registered users", async () => {
+    mocks.prisma.user.findUnique.mockResolvedValue({ id: user.id });
+    const result = await actions.sendEmailCodeAction(null, form({ email: " ALI@Example.com ", purpose: "PASSWORD_RESET" }));
+
+    expect(result).toMatchObject({ success: true });
+    expect(mocks.prisma.emailVerificationCode.updateMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({ email: "ali@example.com", purpose: "PASSWORD_RESET" }),
+    }));
+    expect(mocks.prisma.emailVerificationCode.create).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ email: "ali@example.com", purpose: "PASSWORD_RESET" }),
+    }));
   });
 
   it("signupUserAction persists the verified user and starts a user session", async () => {
@@ -208,6 +229,31 @@ describe("authentication and account actions", () => {
     await expectRedirect(actions.userLoginAction(null, form({ email: user.email, password: "secret12" })), "/account");
 
     expect(mocks.verifyUserPassword).toHaveBeenCalledWith("secret12", "stored-hash");
+    expect(mocks.createUserSession).toHaveBeenCalledWith(user.id);
+  });
+
+  it("resetPasswordAction verifies the reset code, stores the new password, and opens the account", async () => {
+    const code = "654321";
+    const codeHash = createHash("sha256").update(`${user.email}:PASSWORD_RESET:${code}:test-secret`).digest("hex");
+    mocks.prisma.user.findUnique.mockResolvedValue({ ...user });
+    mocks.prisma.emailVerificationCode.findFirst.mockResolvedValue({
+      id: "code-2",
+      codeHash,
+      attempts: 0,
+      expiresAt: new Date(Date.now() + 60_000),
+    });
+
+    await expectRedirect(
+      actions.resetPasswordAction(null, form({ email: user.email, code, password: "newsecret", confirmPassword: "newsecret" })),
+      "/account",
+    );
+
+    expect(mocks.bcryptHash).toHaveBeenCalledWith("newsecret", 10);
+    expect(mocks.prisma.user.update).toHaveBeenCalledWith(expect.objectContaining({
+      where: { id: user.id },
+      data: { passwordHash: "hashed-password" },
+    }));
+    expect(mocks.prisma.emailVerificationCode.update).toHaveBeenCalledWith(expect.objectContaining({ where: { id: "code-2" } }));
     expect(mocks.createUserSession).toHaveBeenCalledWith(user.id);
   });
 
@@ -340,6 +386,7 @@ describe("group, membership, and people actions", () => {
 
     expect(mocks.prisma.expenseParticipant.deleteMany).toHaveBeenCalledWith({ where: { expenseId: { in: ["expense-1"] } } });
     expect(mocks.prisma.expense.deleteMany).toHaveBeenCalledWith({ where: { id: { in: ["expense-1"] } } });
+    expect(mocks.prisma.chore.deleteMany).toHaveBeenCalledWith({ where: { groupId: group.id } });
     expect(mocks.prisma.person.deleteMany).toHaveBeenCalledWith({ where: { groupId: group.id } });
     expect(mocks.prisma.group.delete).toHaveBeenCalledWith({ where: { id: group.id } });
   });
@@ -407,6 +454,62 @@ describe("group, membership, and people actions", () => {
       data: expect.objectContaining({ type: "GUEST", username: null, passwordHash: null, isGroupAdmin: false }),
     }));
     expect(mocks.prisma.person.delete).not.toHaveBeenCalled();
+  });
+
+  it("createChoreAction lets a group admin assign a non-expense task to active members", async () => {
+    mocks.prisma.group.findFirst.mockResolvedValue(group);
+    mocks.prisma.person.findMany.mockResolvedValue([{ id: member.id }, { id: "person-2" }]);
+
+    await actions.createChoreAction(form({
+      groupSlug: group.slug,
+      type: "DISHES",
+      status: "ASSIGNED",
+      scheduledFor: "2026-06-22",
+      participantIds: [member.id, "person-2"],
+      [`intensity-${member.id}`]: "LIGHT",
+      "intensity-person-2": "HEAVY",
+    }));
+
+    expect(mocks.requireGroupAdmin).toHaveBeenCalledWith(group.slug);
+    expect(mocks.prisma.chore.create).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({
+        groupId: group.id,
+        type: "DISHES",
+        title: "ظرف شستن",
+        status: "ASSIGNED",
+        assignedByPersonId: groupAdmin.id,
+        people: {
+          create: [
+            { personId: member.id, intensity: "LIGHT", score: 1 },
+            { personId: "person-2", intensity: "HEAVY", score: 3 },
+          ],
+        },
+      }),
+    }));
+  });
+
+  it("completeChoreAction turns an assigned task into a scored completed task", async () => {
+    mocks.prisma.group.findFirst.mockResolvedValue(group);
+    mocks.prisma.chore.findFirst.mockResolvedValue({ id: "chore-1", groupId: group.id, status: "ASSIGNED" });
+
+    await actions.completeChoreAction(form({ groupSlug: group.slug, choreId: "chore-1" }));
+
+    expect(mocks.prisma.chore.update).toHaveBeenCalledWith(expect.objectContaining({
+      where: { id: "chore-1" },
+      data: expect.objectContaining({ status: "COMPLETED", completedAt: expect.any(Date) }),
+    }));
+  });
+
+  it("cancelChoreAction cancels a task inside the current group only", async () => {
+    mocks.prisma.group.findFirst.mockResolvedValue(group);
+    mocks.prisma.chore.findFirst.mockResolvedValue({ id: "chore-1", groupId: group.id, status: "ASSIGNED" });
+
+    await actions.cancelChoreAction(form({ groupSlug: group.slug, choreId: "chore-1" }));
+
+    expect(mocks.prisma.chore.findFirst).toHaveBeenCalledWith({ where: { id: "chore-1", groupId: group.id } });
+    expect(mocks.prisma.chore.update).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ status: "CANCELLED", completedAt: null }),
+    }));
   });
 });
 

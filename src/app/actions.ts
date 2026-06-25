@@ -4,6 +4,8 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { createHash, randomBytes, randomInt } from "node:crypto";
 import {
+  ChoreIntensity,
+  ChoreStatus,
   EmailVerificationPurpose,
   ExpenseSplitMode,
   ExpenseStatus,
@@ -31,10 +33,12 @@ import {
 import { prisma } from "@/lib/db";
 import { sendVerificationEmail } from "@/lib/email";
 import { setFlashToast } from "@/lib/flash-toast";
-import { calculatePayerShare, calculateShare, parseInputDate, sumParticipantShares } from "@/lib/utils";
+import { calculatePayerShare, calculateShare, choreIntensityScores, choreTypeLabels, parseInputDate, sumParticipantShares } from "@/lib/utils";
 import {
   accountGroupSchema,
   adminLoginSchema,
+  choreCompleteSchema,
+  choreSchema,
   emailVerificationRequestSchema,
   expenseSchema,
   groupAdminLoginSchema,
@@ -45,6 +49,7 @@ import {
   membershipReviewSchema,
   participantShareSchema,
   personSchema,
+  resetPasswordSchema,
   userLoginSchema,
   userSignupSchema,
 } from "@/lib/validations";
@@ -189,6 +194,7 @@ function validationMessage(fallback: string, error?: { issues?: { message?: stri
 function revalidateGroupAdminPages(groupSlug: string) {
   revalidatePath(`/admin/groups/${groupSlug}`);
   revalidatePath(`/${groupSlug}/admin`);
+  revalidatePath(`/${groupSlug}/admin/chores`);
 }
 
 export async function sendEmailCodeAction(_: unknown, formData: FormData) {
@@ -207,6 +213,12 @@ export async function sendEmailCodeAction(_: unknown, formData: FormData) {
     const existingUser = await prisma.user.findUnique({ where: { email }, select: { id: true } });
     if (existingUser) {
       return stateError("این ایمیل قبلاً ثبت شده. از بخش ورود استفاده کن.");
+    }
+  }
+  if (purpose === EmailVerificationPurpose.PASSWORD_RESET) {
+    const existingUser = await prisma.user.findUnique({ where: { email }, select: { id: true } });
+    if (!existingUser) {
+      return stateError("این ایمیل ثبت نشده. اول ثبت‌نام کن.");
     }
   }
 
@@ -329,6 +341,43 @@ export async function userLoginAction(_: unknown, formData: FormData) {
 
   await createUserSession(user.id);
   await setFlashToast("success", `${user.name} خوش آمدی.`);
+  redirect("/account");
+}
+
+export async function resetPasswordAction(_: unknown, formData: FormData) {
+  const parsed = resetPasswordSchema.safeParse({
+    email: formData.get("email"),
+    code: formData.get("code"),
+    password: formData.get("password"),
+    confirmPassword: formData.get("confirmPassword"),
+  });
+  if (!parsed.success) return stateError(validationMessage("اطلاعات بازیابی رمز درست نیست.", parsed.error));
+
+  const email = normalizeEmail(parsed.data.email);
+  const user = await prisma.user.findUnique({ where: { email }, select: { id: true, name: true } });
+  if (!user) return stateError("این ایمیل ثبت نشده. اول ثبت‌نام کن.");
+
+  const verification = await verifyEmailCode(email, EmailVerificationPurpose.PASSWORD_RESET, parsed.data.code);
+  if (!verification.ok) return stateError(verification.message);
+
+  const passwordHash = await bcrypt.hash(parsed.data.password, 10);
+  try {
+    await prisma.$transaction([
+      prisma.user.update({
+        where: { id: user.id },
+        data: { passwordHash },
+      }),
+      prisma.emailVerificationCode.update({
+        where: { id: verification.verification.id },
+        data: { consumedAt: new Date() },
+      }),
+    ]);
+  } catch {
+    return stateError("تغییر رمز انجام نشد. دوباره تلاش کن.");
+  }
+
+  await createUserSession(user.id);
+  await setFlashToast("success", `${user.name}، رمزت تغییر کرد و وارد حساب شدی.`);
   redirect("/account");
 }
 
@@ -715,6 +764,7 @@ export async function deleteGroupAction(formData: FormData) {
         await tx.expenseParticipant.deleteMany({ where: { expenseId: { in: expenseIds } } });
         await tx.expense.deleteMany({ where: { id: { in: expenseIds } } });
       }
+      await tx.chore.deleteMany({ where: { groupId } });
       await tx.person.deleteMany({ where: { groupId } });
       await tx.group.delete({ where: { id: groupId } });
     });
@@ -811,15 +861,18 @@ export async function deletePersonAction(formData: FormData) {
     revalidateGroupAdminPages(groupSlug);
     return;
   }
-  const [paidExpenses, createdExpenses, participations, markedPayments] = await Promise.all([
+  const [paidExpenses, createdExpenses, participations, markedPayments, assignedChores, choreEntries] = await Promise.all([
     prisma.expense.count({ where: { paidByPersonId: id } }),
     prisma.expense.count({ where: { createdByPersonId: id } }),
     prisma.expenseParticipant.count({ where: { personId: id } }),
     prisma.expenseParticipant.count({ where: { markedByPersonId: id } }),
+    prisma.chore.count({ where: { assignedByPersonId: id } }),
+    prisma.choreParticipant.count({ where: { personId: id } }),
   ]);
+  const references = paidExpenses + createdExpenses + participations + markedPayments + assignedChores + choreEntries;
   const label = person.type === PersonType.GUEST ? "مهمان" : "کاربر";
   try {
-    if (person.type === PersonType.MEMBER && paidExpenses + createdExpenses + participations + markedPayments > 0) {
+    if (person.type === PersonType.MEMBER && references > 0) {
       await prisma.person.update({
         where: { id },
         data: {
@@ -831,8 +884,8 @@ export async function deletePersonAction(formData: FormData) {
           isActive: true,
         },
       });
-      await setFlashToast("success", `${person.name} از اعضا حذف شد و در خرج‌های قبلی با همان نام به‌صورت مهمان باقی ماند.`);
-    } else if (paidExpenses + createdExpenses + participations + markedPayments > 0) {
+      await setFlashToast("success", `${person.name} از اعضا حذف شد و در تاریخچه با همان نام به‌صورت مهمان باقی ماند.`);
+    } else if (references > 0) {
       await prisma.person.update({ where: { id }, data: { isActive: false } });
       await setFlashToast("success", `${label} ${person.name} غیرفعال شد.`);
     } else {
@@ -845,6 +898,115 @@ export async function deletePersonAction(formData: FormData) {
     return;
   }
   revalidateGroupAdminPages(groupSlug);
+}
+
+function choreIntensityFromForm(formData: FormData, personId: string) {
+  const value = String(formData.get(`intensity-${personId}`) ?? ChoreIntensity.NORMAL);
+  if (Object.values(ChoreIntensity).includes(value as ChoreIntensity)) return value as ChoreIntensity;
+  return ChoreIntensity.NORMAL;
+}
+
+export async function createChoreAction(formData: FormData) {
+  const parsedResult = choreSchema.safeParse({
+    groupSlug: normalizeSlug(String(formData.get("groupSlug") ?? "")),
+    type: formData.get("type"),
+    title: formData.get("title")?.toString() || undefined,
+    status: formData.get("status"),
+    scheduledFor: formData.get("scheduledFor"),
+    note: formData.get("note")?.toString() || undefined,
+    participantIds: formStringArray(formData, "participantIds"),
+  });
+  if (!parsedResult.success) {
+    await setFlashToast("error", validationMessage("اطلاعات کار درست نیست.", parsedResult.error));
+    revalidateGroupAdminPages(normalizeSlug(String(formData.get("groupSlug") ?? "")));
+    return;
+  }
+  const parsed = parsedResult.data;
+  const { group, groupAdminId } = await requireGroupManager(parsed.groupSlug);
+  const participantIds = Array.from(new Set(parsed.participantIds));
+  const people = await prisma.person.findMany({
+    where: { id: { in: participantIds }, groupId: group.id, type: PersonType.MEMBER, isActive: true },
+    select: { id: true },
+  });
+  if (people.length !== participantIds.length) {
+    await setFlashToast("error", "یکی از افراد انتخاب‌شده عضو فعال این گروه نیست.");
+    revalidateGroupAdminPages(group.slug);
+    return;
+  }
+  const status = parsed.status as ChoreStatus;
+  const title = parsed.title || choreTypeLabels[parsed.type];
+  const participants = participantIds.map((personId) => {
+    const intensity = choreIntensityFromForm(formData, personId);
+    return {
+      personId,
+      intensity,
+      score: choreIntensityScores[intensity],
+    };
+  });
+  try {
+    await prisma.chore.create({
+      data: {
+        groupId: group.id,
+        type: parsed.type,
+        title,
+        status,
+        scheduledFor: parseInputDate(parsed.scheduledFor),
+        completedAt: status === ChoreStatus.COMPLETED ? new Date() : null,
+        note: parsed.note || null,
+        assignedByPersonId: groupAdminId,
+        people: { create: participants },
+      },
+    });
+  } catch {
+    await setFlashToast("error", `ثبت کار ${title} انجام نشد.`);
+    revalidateGroupAdminPages(group.slug);
+    return;
+  }
+  await setFlashToast("success", status === ChoreStatus.COMPLETED ? `کار ${title} ثبت شد.` : `کار ${title} اساین شد.`);
+  revalidateGroupAdminPages(group.slug);
+}
+
+async function updateChoreStatus(formData: FormData, nextStatus: ChoreStatus) {
+  const parsedResult = choreCompleteSchema.safeParse({
+    groupSlug: normalizeSlug(String(formData.get("groupSlug") ?? "")),
+    choreId: formData.get("choreId"),
+  });
+  if (!parsedResult.success) {
+    await setFlashToast("error", validationMessage("کار مشخص نیست.", parsedResult.error));
+    revalidateGroupAdminPages(normalizeSlug(String(formData.get("groupSlug") ?? "")));
+    return;
+  }
+  const parsed = parsedResult.data;
+  const { group } = await requireGroupManager(parsed.groupSlug);
+  const chore = await prisma.chore.findFirst({ where: { id: parsed.choreId, groupId: group.id } });
+  if (!chore || chore.status === ChoreStatus.CANCELLED) {
+    await setFlashToast("error", "این کار پیدا نشد.");
+    revalidateGroupAdminPages(group.slug);
+    return;
+  }
+  try {
+    await prisma.chore.update({
+      where: { id: chore.id },
+      data: {
+        status: nextStatus,
+        completedAt: nextStatus === ChoreStatus.COMPLETED ? new Date() : null,
+      },
+    });
+  } catch {
+    await setFlashToast("error", "تغییر وضعیت کار انجام نشد.");
+    revalidateGroupAdminPages(group.slug);
+    return;
+  }
+  await setFlashToast("success", nextStatus === ChoreStatus.COMPLETED ? "کار انجام‌شده ثبت شد." : "کار لغو شد.");
+  revalidateGroupAdminPages(group.slug);
+}
+
+export async function completeChoreAction(formData: FormData) {
+  await updateChoreStatus(formData, ChoreStatus.COMPLETED);
+}
+
+export async function cancelChoreAction(formData: FormData) {
+  await updateChoreStatus(formData, ChoreStatus.CANCELLED);
 }
 
 async function saveExpense(formData: FormData, mode: "create" | "edit") {

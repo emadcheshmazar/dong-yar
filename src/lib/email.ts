@@ -10,6 +10,7 @@ type VerificationEmailInput = {
 const purposeLabels: Record<EmailVerificationPurpose, string> = {
   USER_SIGNUP: "ثبت‌نام کاربر",
   GROUP_SIGNUP: "ساخت گروه",
+  PASSWORD_RESET: "بازیابی رمز عبور",
 };
 
 function getSmtpConfig() {

@@ -28,9 +28,30 @@ enum PaymentStatus {
   UNPAID
 }
 
+enum ChoreType {
+  COOKING
+  DISHES
+  SHOPPING
+  CLEANING
+  OTHER
+}
+
+enum ChoreStatus {
+  ASSIGNED
+  COMPLETED
+  CANCELLED
+}
+
+enum ChoreIntensity {
+  LIGHT
+  NORMAL
+  HEAVY
+}
+
 enum EmailVerificationPurpose {
   USER_SIGNUP
   GROUP_SIGNUP
+  PASSWORD_RESET
 }
 
 enum MembershipRequestStatus {
@@ -77,6 +98,7 @@ model Group {
 
   people             Person[]
   expenses           Expense[]
+  chores             Chore[]
   membershipRequests MembershipRequest[]
 }
 
@@ -99,6 +121,8 @@ model Person {
   createdExpenses Expense[]            @relation("CreatedBy")
   participations  ExpenseParticipant[] @relation("ParticipantPerson")
   markedPayments  ExpenseParticipant[] @relation("MarkedBy")
+  assignedChores  Chore[]              @relation("ChoreAssignedBy")
+  choreEntries    ChoreParticipant[]   @relation("ChoreParticipantPerson")
   reviewedRequests MembershipRequest[]  @relation("ReviewedBy")
 
   @@unique([groupId, username])
@@ -145,6 +169,43 @@ model Expense {
   paidBy       Person               @relation("PaidBy", fields: [paidByPersonId], references: [id])
   createdBy    Person               @relation("CreatedBy", fields: [createdByPersonId], references: [id])
   participants ExpenseParticipant[]
+}
+
+model Chore {
+  id                 String      @id @default(cuid())
+  groupId            String
+  type               ChoreType
+  title              String
+  status             ChoreStatus @default(COMPLETED)
+  scheduledFor       DateTime
+  completedAt        DateTime?
+  note               String?
+  assignedByPersonId String?
+  createdAt          DateTime    @default(now())
+  updatedAt          DateTime    @updatedAt
+
+  group      Group              @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  assignedBy Person?            @relation("ChoreAssignedBy", fields: [assignedByPersonId], references: [id], onDelete: SetNull)
+  people     ChoreParticipant[]
+
+  @@index([groupId, status, scheduledFor])
+  @@index([assignedByPersonId])
+}
+
+model ChoreParticipant {
+  id          String         @id @default(cuid())
+  choreId     String
+  personId    String
+  intensity   ChoreIntensity @default(NORMAL)
+  score       Int
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+
+  chore  Chore  @relation(fields: [choreId], references: [id], onDelete: Cascade)
+  person Person @relation("ChoreParticipantPerson", fields: [personId], references: [id])
+
+  @@unique([choreId, personId])
+  @@index([personId])
 }
 
 model ExpenseParticipant {

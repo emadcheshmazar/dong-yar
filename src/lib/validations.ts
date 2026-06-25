@@ -22,7 +22,7 @@ export const groupAdminLoginSchema = z.object({
 
 export const emailVerificationRequestSchema = z.object({
   email: z.string().trim().toLowerCase().email("ایمیل معتبر وارد کن."),
-  purpose: z.enum(["USER_SIGNUP", "GROUP_SIGNUP"]),
+  purpose: z.enum(["USER_SIGNUP", "GROUP_SIGNUP", "PASSWORD_RESET"]),
 });
 
 export const userLoginSchema = z.object({
@@ -37,6 +37,19 @@ export const userSignupSchema = z.object({
   code: z.string().trim().regex(/^\d{6}$/, "کد تایید ۶ رقمی را وارد کن."),
   joinCode: z.string().trim().optional(),
 });
+
+export const resetPasswordSchema = z
+  .object({
+    email: z.string().trim().toLowerCase().email("ایمیل معتبر وارد کن."),
+    code: z.string().trim().regex(/^\d{6}$/, "کد تایید ۶ رقمی را وارد کن."),
+    password: z.string().min(6, "رمز جدید حداقل ۶ کاراکتر باشد."),
+    confirmPassword: z.string().min(1, "تکرار رمز جدید را وارد کن."),
+  })
+  .superRefine((data, ctx) => {
+    if (data.password !== data.confirmPassword) {
+      ctx.addIssue({ code: "custom", message: "رمز جدید و تکرارش یکسان نیستند.", path: ["confirmPassword"] });
+    }
+  });
 
 export const accountGroupSchema = z.object({
   name: z.string().trim().min(2, "نام گروه کوتاه است."),
@@ -106,4 +119,19 @@ export const participantShareSchema = z.object({
   expenseId: z.string().min(1, "خرج مشخص نیست."),
   participantId: z.string().min(1, "شرکت‌کننده مشخص نیست."),
   shareAmount: z.coerce.number().int().nonnegative("سهم نمی‌تواند منفی باشد."),
+});
+
+export const choreSchema = z.object({
+  groupSlug: z.string().trim().min(1, "گروه مشخص نیست."),
+  type: z.enum(["COOKING", "DISHES", "SHOPPING", "CLEANING", "OTHER"]),
+  title: z.string().trim().optional(),
+  status: z.enum(["ASSIGNED", "COMPLETED"]),
+  scheduledFor: z.string().min(1, "تاریخ را انتخاب کن."),
+  note: z.string().trim().optional(),
+  participantIds: z.array(z.string()).min(1, "حداقل یک نفر را انتخاب کن."),
+});
+
+export const choreCompleteSchema = z.object({
+  groupSlug: z.string().trim().min(1, "گروه مشخص نیست."),
+  choreId: z.string().min(1, "کار مشخص نیست."),
 });

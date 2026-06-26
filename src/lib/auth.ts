@@ -5,10 +5,10 @@ import bcrypt from "bcryptjs";
 import { PersonType } from "@prisma/client";
 import { prisma } from "@/lib/db";
 
-const COOKIE_NAME = "daria_dong_session";
-const USER_COOKIE_NAME = "daria_dong_user";
-const ADMIN_COOKIE_NAME = "daria_dong_admin";
-const GROUP_ADMIN_COOKIE_NAME = "daria_dong_group_admin";
+const COOKIE_NAME = "dong_yar_session";
+const USER_COOKIE_NAME = "dong_yar_user";
+const ADMIN_COOKIE_NAME = "dong_yar_admin";
+const GROUP_ADMIN_COOKIE_NAME = "dong_yar_group_admin";
 
 function getSecret() {
   return process.env.SESSION_SECRET || "dev-secret-change-me";
